@@ -1,0 +1,148 @@
+WHITESPACE = _{ " " }
+COMMENT = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
+
+digit = { '0'..'9' }
+digits = _{ digit+ }
+
+ident = @{ (ASCII_ALPHA) ~ (ASCII_ALPHANUMERIC | "_")* }
+
+number = @{ digits ~ ("." ~ digits)? }
+
+element_name = @{ ASCII_ALPHA_UPPER ~ ASCII_ALPHA_LOWER? }
+
+chemical = @{ (element_name ~ digits? | "(" ~ chemical ~ ")" ~ digits?)+ }
+
+SI_prefix_long = _{
+    "yotta" | "zetta" | "exa" | "peta" | "tera" | "giga" | "mega" | "kilo" | "hecto" | "deca" |
+    "deci" | "centi" | "milli" | "micro" | "nano" | "pico"
+}
+
+SI_prefix_short = _{
+    "Y" | "Z" | "E" | "P" | "T" | "G" | "M" | "k" | "h" | "da" |
+    "d" | "c" | "m" | "u" | "n" | "p"
+}
+
+mass_units_short = _{
+    SI_prefix_short? ~ "g" | "t" | "lbs" | "lb" | "oz" | "ct" | "gr" | "dr" | "cwt" | "slug" | "ton" | "dalton" | "u"
+}
+
+mass_units_long = _{
+    (SI_prefix_long? ~ "gram" | "tonne" | "pound" | "ounce" | "carat" | "grain" | "dram" | "hundredweight" | "slug" | "ton" | "dalton" | "unified atomic mass unit") ~ ("s" | "es")?
+}
+
+mass_units = _{ mass_units_short | mass_units_long }
+
+length_units_short = _{
+    "mm" | "m" | SI_prefix_short? ~ "m" | "in" | "ft" | "yd" | "mi" | "nmi" | "ly" | "au" | "pc" | "pt" | "px" | "em" | "rem" | "ex" | "ch" | "lh" | "vw" | "vh" | "vmin" | "vmax" | "cm" | "mm" | "km" | "dm" | "hm" | "dam" | "nm" | "pm" | "fm" | "am" | "zm" | "ym"
+}
+
+length_units_long = _{
+    (SI_prefix_long? ~ "meter" | "inch" | "foot" | "feet" | "yard" | "mile" | "nautical mile" | "light year" | "astronomical unit" | "parsec" | "point" | "pixel" | "em" | "rem") ~ ("s" | "es")?
+}
+
+length_units = _{ length_units_short | length_units_long }
+
+time_units_short = _{
+    SI_prefix_short? ~ "s" | "min" | "h" | "d" | "wk" | "mo" | "yr" | "dec" | "cent" | "mill"
+}
+
+time_units_long = _{
+    (SI_prefix_long? ~ "second" | "minute" | "hour" | "day" | "week" | "month" | "year" | "decade" | "century" | "millennium") ~ ("s" | "es")?
+}
+
+amount_units_short = _{
+    "mol" | SI_prefix_short ~ "mol"
+}
+
+amount_units_long = _{
+    ("mole" | SI_prefix_long ~ "mole") ~ ("s" | "es")?
+}
+
+temperature_units_short = _{
+    "K" | "C" | "F" | "R" | "Ra" | "Re" | "Ro" | "De"
+}
+
+temperature_units_long = _{
+    "kelvin" | "celsius" | "fahrenheit" | "rankine" | "reaumur" | "romer" | "delisle"
+}
+
+data_units_short = _{
+    SI_prefix_short? ~ "b" | "B"
+}
+
+data_units_long = _{
+    (SI_prefix_long? ~ "bit" | "byte") ~ "s"?
+}
+
+units_short = _{amount_units_short | mass_units_short | length_units_short | time_units_short | temperature_units_short | data_units_short }
+units_long = _{amount_units_long | mass_units_long | length_units_long | time_units_long | temperature_units_long | data_units_long }
+
+chemical_unit = @{(amount_units_short | amount_units_long | mass_units_short | mass_units_long)}
+
+chemical_unit_expr = ${ #name = chemical_unit ~ " " ~ #chemical = chemical }
+
+ungrouped_unit_atom = ${ chemical_unit_expr }
+
+grouped_unit_atom = ${"(" ~ (ungrouped_unit_atom | grouped_unit_atom) ~ ")" | units_long | units_short}
+
+integer = @{"-"? ~ ASCII_DIGIT+}
+
+unit_power = ${#unit = grouped_unit_atom ~ ("^" ~ #power = integer)?}
+
+unit_mul_group = ${unit_power+}
+
+convert_expr = @{ ("in" | "as" | "to") ~ " " ~ units_expr }
+
+units_expr_numerator = ${((#numerator = unit_mul_group) | "1") | "(" ~ units_expr_numerator ~ ")"}
+units_expr_denomimator = ${((#denominator = unit_mul_group) | "1") | "(" ~ units_expr_numerator ~ ")"}
+
+units_expr_inner = _{!bin_op ~ !convert_expr ~ (ungrouped_unit_atom | units_expr_numerator ~ "/" ~ units_expr_denomimator | units_expr_numerator)}
+
+units_expr = ${"(" ~ units_expr_inner ~ ")" ~ !"/" | units_expr_inner}
+
+dimensional_number = ${ number ~ " " ~ units_expr }
+
+unary_op_pre = _{ negative }
+    negative = { "-" }
+
+
+unary_op_post = _{ factorial | percent | convert}
+    factorial = { "!" }
+    percent = { "%" }
+    convert = {convert_op ~ units_expr}
+    	convert_op = _{ "as" | "in" | "to" }
+
+variable = @{ ident }
+function_name = @{ ident }
+
+grouped_atom = _{ number | base_function | grouped_function | paren_expr | variable }
+	base_function_name = @{"log" | "root"}
+    base_function = ${ #name = base_function_name ~ function_base ~ function_input }
+    grouped_function = ${ #name = function_name ~ function_base? ~ function_input }
+    	function_base = ${ ("_"? ~ #base = number) | "_" ~ #base = (variable | grouped_atom)  }
+    	function_input = !{"(" ~  #input = expr ~ ("," ~ #input = expr)* ~ ")" }
+    paren_expr = _{ "(" ~ expr ~ ")" }
+
+grouped_mul_atom = ${ grouped_atom ~ grouped_atom+ }
+
+atom = _{ grouped_mul_atom | dimensional_number | ungrouped_function | grouped_atom }
+    ungrouped_function = ${#name = ident ~ " " ~ #input = atom}
+
+bin_op = _{ add | subtract | multiply | divide | exponent }
+    add = { "+" | " plus " }
+	subtract = { "-" | "minus" }
+	multiply = { "*" | "of " | "times" }
+    exponent = { "^" }
+	divide = { "/" | "over" | "divided by" | "divide by" | "by"}
+
+expr = !{ unary_op_pre* ~ atom ~ unary_op_post* ~ (bin_op ~ unary_op_pre* ~ atom ~ unary_op_post*)* }
+
+declaration = !{ "let " ~ variable }
+
+constraint = !{expr ~ "=" ~ expr}
+
+declaration_constraint = !{ "let " ~ variable ~ "=" ~ expr }
+
+variable_constraint = !{variable ~ "=" ~ expr}
+
+line = _{ SOI ~ (declaration_constraint | declaration | variable_constraint | constraint | expr) ~ EOI }
