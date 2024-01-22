@@ -23,19 +23,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          
-      - name: setup bun (except windows)
-        if: matrix.platform != 'windows-latest'
-        uses: oven-sh/setup-bun@v1.1.1
 
       - name: setup WSL (windows only)
         if: matrix.platform == 'windows-latest'
         uses: Vampire/setup-wsl@v2.0.2
         
-      - name: setup bun (windows only)
-        if: matrix.platform == 'windows-latest'
+      - name: setup bun
         run: |
-          powershell -c "irm bun.sh/install.ps1|iex"
+          curl -fsSL https://bun.sh/install | bash -s "bun-v1.0.25"
 
       - name: install Rust stable
         uses: dtolnay/rust-toolchain@stable
