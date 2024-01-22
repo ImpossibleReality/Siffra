@@ -46,6 +46,7 @@ jobs:
         run: npm install
 
       - name: build tauri release (except windows)
+        if: matrix.platform != 'windows-latest'
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -57,6 +58,7 @@ jobs:
           prerelease: false
 
       - name: build tauri release (windows only)
+        if: matrix.platform == 'windows-latest'
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
