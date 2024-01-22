@@ -1,6 +1,4 @@
-use std::fmt::Display;
 use std::ops::{Add, Div, Mul, Neg, Sub};
-use std::str::FromStr;
 
 mod dimension;
 pub use dimension::*;
@@ -96,11 +94,7 @@ impl Value {
                 self.dimension
                     .0
                     .iter()
-                    .map(|(quantity, power)| {
-                        (quantity.clone(), {
-                            power.clone().neg()
-                        })
-                    })
+                    .map(|(quantity, power)| (quantity.clone(), { power.clone().neg() }))
                     .collect(),
             ),
             value: self.value.clone().recip(),

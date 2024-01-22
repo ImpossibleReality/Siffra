@@ -1,16 +1,11 @@
 mod state;
-pub use state::*;
 
 use pest::Parser;
 pub use state::SiffraState;
 
 use crate::grammar::representation::ParsedLine;
 use crate::grammar::{parse_line, Rule, SiffraParser};
-use crate::representations::{Expression, Value, Float, Dimension};
-
-const PI_STRING: &str = "3.14159265358979323846264338327950288419716939937510582097494459230781640628620899862803482534211706798214808651328230";
-const E_STRING: &str = "2.718281828459045235360287471352662497757247093699959574966967627724076630353547594571382178525166427427466391932003059";
-
+use crate::representations::{Dimension, Expression, Float, Value};
 pub type EvaluationResult = Result<Option<Value>, ()>;
 
 pub fn evaluate_line(line: &str, state: &mut SiffraState) -> EvaluationResult {
@@ -48,18 +43,8 @@ pub fn evaluate_expr(expr: &Expression, state: &SiffraState) -> Result<Value, ()
                 Ok(v.clone())
             } else {
                 match name.as_str() {
-                    "pi" => Ok(Value::new(
-                        {
-                            Float::pi()
-                        },
-                        None,
-                    )),
-                    "e" => Ok(Value::new(
-                        {
-                            Float::e()
-                        },
-                        None,
-                    )),
+                    "pi" => Ok(Value::new(Float::pi(), None)),
+                    "e" => Ok(Value::new(Float::e(), None)),
                     _ => Err(()),
                 }
             }
@@ -95,7 +80,9 @@ pub fn evaluate_expr(expr: &Expression, state: &SiffraState) -> Result<Value, ()
                 }
                 "sqrt" => {
                     if args.len() == 1 {
-                        Ok(args[0].try_pow(&Value::new(Float::from(0.5), None)).ok_or(())?)
+                        Ok(args[0]
+                            .try_pow(&Value::new(Float::from(0.5), None))
+                            .ok_or(())?)
                     } else {
                         Err(())
                     }

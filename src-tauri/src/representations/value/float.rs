@@ -1,13 +1,15 @@
+use astro_float::Consts;
+use astro_float::RoundingMode;
+use astro_float::{BigFloat, Radix};
+use lazy_static::lazy_static;
 use std::fmt::Display;
 use std::ops::{Add, Div, Mul, Neg, Sub};
 use std::sync::{Arc, Mutex};
-use astro_float::{BigFloat, Radix};
-use astro_float::Consts;
-use astro_float::RoundingMode;
-use lazy_static::lazy_static;
 
 lazy_static! {
-    static ref CONST_CACHE: Arc<Mutex<Consts>> = Arc::new(Mutex::new(Consts::new().expect("Failed to initialize constants")));
+    static ref CONST_CACHE: Arc<Mutex<Consts>> = Arc::new(Mutex::new(
+        Consts::new().expect("Failed to initialize constants")
+    ));
 }
 
 const PRECISION: usize = 256;
@@ -103,13 +105,16 @@ impl Float {
 impl Display for Float {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut cache = CONST_CACHE.lock().unwrap();
-        let string = self.0.format(Radix::Dec, ROUNDING_MODE, &mut *cache).unwrap();
+        let string = self
+            .0
+            .format(Radix::Dec, ROUNDING_MODE, &mut *cache)
+            .unwrap();
 
         // In scientific notation
         let string = string.split('e').collect::<Vec<&str>>();
         let (Some(mantissa), Some(exponent)) = (string.get(0), string.get(1)) else {
             write!(f, "{}", string[0])?;
-            return Ok(())
+            return Ok(());
         };
 
         let mut exponent = exponent.parse::<i32>().unwrap();
@@ -263,8 +268,6 @@ impl PartialOrd for Float {
     }
 }
 
-
-
 impl<T> From<T> for Float
 where
     T: Into<BigFloat>,
@@ -282,8 +285,14 @@ mod tests {
     fn test_parse() {
         assert_eq!(Float::parse("1.00").unwrap(), Float::from(1));
         assert_eq!(Float::parse("1.0E1").unwrap(), Float::from(10));
-        assert!((&Float::parse("1.0E-1").unwrap() - &Float::from(0.1)).abs() < Float::from(0.0000000001));
-        assert!((&Float::parse("15.03E+3").unwrap() - &Float::from(15030)).abs() < Float::from(0.0000000001));
+        assert!(
+            (&Float::parse("1.0E-1").unwrap() - &Float::from(0.1)).abs()
+                < Float::from(0.0000000001)
+        );
+        assert!(
+            (&Float::parse("15.03E+3").unwrap() - &Float::from(15030)).abs()
+                < Float::from(0.0000000001)
+        );
     }
 
     #[test]
@@ -292,7 +301,12 @@ mod tests {
         assert_eq!(Float::parse("001.00").unwrap().to_string(), "1");
         assert_eq!(Float::parse("5e-20").unwrap().to_string(), "5E-20");
         assert_eq!(Float::parse("999").unwrap().to_string(), "999");
-        assert_eq!(Float::parse(".01123410918273418734182374").unwrap().to_string(), "0.01123410918273418734182374");
+        assert_eq!(
+            Float::parse(".01123410918273418734182374")
+                .unwrap()
+                .to_string(),
+            "0.01123410918273418734182374"
+        );
         assert_eq!(Float::parse("0").unwrap().to_string(), "0.0");
         assert_eq!(Float::from(0).to_string(), "0.0");
         assert_eq!(Float::from(-1).to_string(), "-1");

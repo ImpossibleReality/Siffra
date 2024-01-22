@@ -12,7 +12,7 @@ struct SiffraLineOutput {
 }
 
 fn display_value(val: Value) -> String {
-    let (mut val, dim) = val.into_parts();
+    let (val, dim) = val.into_parts();
 
     let mut output = String::new();
 

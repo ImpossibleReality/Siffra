@@ -1,6 +1,6 @@
+use crate::representations::{Dimension, Quantity};
 use crate::representations::{Expression, Float, Value};
 use std::str::FromStr;
-use crate::representations::{Dimension, Quantity};
 
 #[derive(Debug)]
 pub enum ParsedLine {
@@ -79,19 +79,13 @@ impl TryFrom<ParsedDimension> for Dimension {
 
         for (unit, power) in dimension.numerator {
             if !(unit.name == "unitless" || unit.name == "number") {
-                quantities.push((
-                    Quantity::from_str(unit.name.as_str())?,
-                    Float::from(power),
-                ));
+                quantities.push((Quantity::from_str(unit.name.as_str())?, Float::from(power)));
             }
         }
 
         for (unit, power) in dimension.denominator {
             if !(unit.name == "unitless" || unit.name == "number") {
-                quantities.push((
-                    Quantity::from_str(unit.name.as_str())?,
-                    Float::from(-power),
-                ));
+                quantities.push((Quantity::from_str(unit.name.as_str())?, Float::from(-power)));
             }
         }
 

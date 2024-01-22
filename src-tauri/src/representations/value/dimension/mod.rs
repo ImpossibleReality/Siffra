@@ -1,24 +1,24 @@
 mod amount;
+mod angle;
 mod chemical;
 mod length;
 mod macros;
 mod mass;
 mod time;
-mod angle;
 
-use std::str::FromStr;
+use crate::representations::Float;
 use std::collections::BTreeMap;
 use std::fmt::Display;
 use std::ops::Neg;
-use crate::representations::Float;
+use std::str::FromStr;
 
 pub use {
     amount::Amount,
-    chemical::{ Compound, Element },
+    angle::Angle,
+    chemical::{Compound, Element},
     length::Length,
     mass::Mass,
     time::Time,
-    angle::Angle,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -119,7 +119,7 @@ impl Display for Dimension {
 
             if *power > Float::from(0) {
                 if !numerator.is_empty() {
-                        quantity_shorthand = format!("*{}", quantity_shorthand);
+                    quantity_shorthand = format!("*{}", quantity_shorthand);
                 }
                 numerator.push_str(&*quantity_shorthand);
                 if *power > Float::from(1) {
@@ -127,7 +127,7 @@ impl Display for Dimension {
                 }
             } else if *power < Float::from(0) {
                 if !denominator.is_empty() {
-                        quantity_shorthand = format!("*{}", quantity_shorthand);
+                    quantity_shorthand = format!("*{}", quantity_shorthand);
                 }
                 denominator.push_str(&*quantity_shorthand);
                 if *power != Float::from(-1) {

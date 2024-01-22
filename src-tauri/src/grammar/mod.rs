@@ -309,7 +309,7 @@ mod tests {
 
     #[test]
     fn test_parse_expr() {
-        let expr = parse_expr(SiffraParser::parse(Rule::expr, "log2(5(x)(y)) as mol %").unwrap());
+        let _expr = parse_expr(SiffraParser::parse(Rule::expr, "log2(5(x)(y)) as mol %").unwrap());
     }
 
     #[test]
@@ -326,6 +326,6 @@ mod tests {
 
     #[test]
     fn test_ungrouped_functions() {
-        let expr = parse_expr(SiffraParser::parse(Rule::expr, "log 5a").unwrap());
+        let _expr = parse_expr(SiffraParser::parse(Rule::expr, "log 5a").unwrap());
     }
 }
