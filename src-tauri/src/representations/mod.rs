@@ -1,5 +1,5 @@
-mod dimension;
+mod value;
 mod expression;
 
-pub use dimension::*;
+pub use value::*;
 pub use expression::*;

@@ -1,5 +1,5 @@
-use crate::representations::dimension::chemical::compound::Compound;
-use crate::representations::dimension::chemical::element::Element;
+use crate::representations::Compound;
+use crate::representations::Element;
 use std::collections::BTreeMap;
 
 fn parse_compound(formula: String) -> Option<Compound> {

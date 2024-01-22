@@ -1,4 +1,5 @@
-use crate::representations::dimension::{Dimension, Value};
+use crate::representations::Value;
+use crate::representations::Dimension;
 
 #[derive(Debug, Clone)]
 pub enum Expression {

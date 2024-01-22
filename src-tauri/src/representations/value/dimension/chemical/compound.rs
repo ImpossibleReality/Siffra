@@ -1,4 +1,4 @@
-use crate::representations::dimension::chemical::element::Element;
+use crate::representations::Element;
 use std::collections::BTreeMap;
 use std::fmt::Display;
 

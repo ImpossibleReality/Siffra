@@ -1,12 +1,8 @@
 #[macro_export]
 macro_rules! ratio {
     ($num:literal / $denom:literal) => {{
-        use rug::Rational;
-
-        let mut num =
-            Rational::from_str(concat!(stringify!($num), "/", stringify!($denom))).unwrap();
-
-        num
+        use crate::representations::Float;
+        &Float::parse(stringify!($num)).unwrap() / &Float::parse(stringify!($denom)).unwrap()
     }};
 }
 
@@ -14,14 +10,14 @@ macro_rules! ratio {
 /// The first passed string for each unit should be the unit's default shorthand name.
 /// The second passed string for each unit should be the unit's default longhand name.
 /// Any other passed strings for each unit should be other possible names/abbreviations of the unit.
-/// ```rust
+/// ```ignore
 /// use siffra_desktop::{quantity, ratio};
 /// quantity!(Length, [(Meter, ratio!(1 / 1), "m", "meter", "meters")]);
 /// ```
 #[macro_export]
 macro_rules! quantity {
     ($name:ident, [$(($unit_name:ident, $unit_ratio:expr, $default_shorthand:expr, $default_longhand:expr, $($unit_aliases:expr),*)),*]) => {
-        use rug::Rational;
+        use crate::representations::Float;
         use std::str::FromStr;
 
         #[derive(Debug, Clone, Copy, PartialEq)]
@@ -41,7 +37,7 @@ macro_rules! quantity {
         }
 
         impl $name {
-            pub fn ratio(&self) -> Rational {
+            pub fn ratio(&self) -> Float {
                 match self {
                     $($name::$unit_name => $unit_ratio),*
                 }
