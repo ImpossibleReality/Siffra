@@ -1,6 +1,13 @@
 use crate::representations::{Dimension, Expression, Quantity, Value};
-use num::{BigRational, FromPrimitive};
+use rug::{Assign, Float, Rational};
 use std::str::FromStr;
+
+#[derive(Debug)]
+pub enum ParsedLine {
+    Comment,
+    Expression(ParsedExpr),
+    Variable(String, ParsedExpr),
+}
 
 #[derive(Debug)]
 pub struct ParsedUnit {
@@ -17,7 +24,7 @@ pub struct ParsedDimension {
 #[derive(Debug)]
 pub enum ParsedExpr {
     Number {
-        value: f64,
+        value: String,
         units: Option<ParsedDimension>,
     },
     Variable {
@@ -71,11 +78,21 @@ impl TryFrom<ParsedDimension> for Dimension {
         let mut quantities = Vec::new();
 
         for (unit, power) in dimension.numerator {
-            quantities.push((Quantity::from_str(unit.name.as_str())?, power));
+            if !(unit.name == "unitless" || unit.name == "number") {
+                quantities.push((
+                    Quantity::from_str(unit.name.as_str())?,
+                    Rational::from(power),
+                ));
+            }
         }
 
         for (unit, power) in dimension.denominator {
-            quantities.push((Quantity::from_str(unit.name.as_str())?, -power));
+            if !(unit.name == "unitless" || unit.name == "number") {
+                quantities.push((
+                    Quantity::from_str(unit.name.as_str())?,
+                    Rational::from(-power),
+                ));
+            }
         }
 
         Ok(Dimension::new(quantities))
@@ -92,11 +109,10 @@ impl TryFrom<ParsedExpr> for Expression {
                     Some(units) => Some(Dimension::try_from(units)?),
                     None => None,
                 };
+                let mut num = Float::new(128);
+                num.assign(Float::parse(value).map_err(|_| ())?);
 
-                Ok(Expression::Constant(Value::new(
-                    BigRational::from_f64(value).ok_or(())?,
-                    dimension,
-                )))
+                Ok(Expression::Constant(Value::new(num, dimension)))
             }
             ParsedExpr::Variable { name } => Ok(Expression::Variable(name)),
             ParsedExpr::FunctionCall { name, args, base } => {

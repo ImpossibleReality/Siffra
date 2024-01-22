@@ -1,8 +1,9 @@
 use crate::representations::dimension::chemical::Compound;
-use num::BigRational;
-use num::FromPrimitive;
-use std::collections::{BTreeMap, HashMap};
-use std::ops::{Add, Div, Mul, Sub};
+use rug::ops::{NegAssign, Pow};
+use rug::{Assign, Float, Rational};
+use std::collections::BTreeMap;
+use std::fmt::Display;
+use std::ops::{Add, Div, Mul, Neg, Sub};
 use std::str::FromStr;
 
 mod amount;
@@ -11,6 +12,7 @@ mod length;
 mod macros;
 mod mass;
 mod time;
+mod angle;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum QuantityKind {
@@ -18,6 +20,7 @@ pub enum QuantityKind {
     Time,
     Mass,
     Amount,
+    Angle,
     Compound(Compound),
 }
 
@@ -27,6 +30,7 @@ pub enum Quantity {
     Time(time::Time),
     Mass(mass::Mass, Option<Compound>),
     Amount(amount::Amount, Option<Compound>),
+    Angle(angle::Angle),
 }
 
 impl FromStr for Quantity {
@@ -49,6 +53,10 @@ impl FromStr for Quantity {
             return Ok(Quantity::Amount(amount::Amount::from_str(s).unwrap(), None));
         }
 
+        if angle::Angle::from_str(s).is_ok() {
+            return Ok(Quantity::Angle(angle::Angle::from_str(s).unwrap()));
+        }
+
         Err(())
     }
 }
@@ -66,24 +74,77 @@ impl Quantity {
                 Some(compound) => QuantityKind::Compound(compound.clone()),
                 None => QuantityKind::Amount,
             },
+            Quantity::Angle(_) => QuantityKind::Angle,
         }
     }
 
-    pub fn get_ratio(&self) -> BigRational {
+    pub fn shorthand(&self) -> &'static str {
+        match self {
+            Quantity::Length(length) => length.shorthand(),
+            Quantity::Time(time) => time.shorthand(),
+            Quantity::Mass(mass, _) => mass.shorthand(),
+            Quantity::Amount(amount, _) => amount.shorthand(),
+            Quantity::Angle(angle) => angle.shorthand(),
+        }
+    }
+
+    pub fn get_ratio(&self) -> Rational {
         match self {
             Quantity::Length(length) => length.ratio(),
             Quantity::Time(time) => time.ratio(),
             Quantity::Mass(mass, _) => mass.ratio(),
             Quantity::Amount(amount, _) => amount.ratio(),
+            Quantity::Angle(angle) => angle.ratio(),
         }
     }
 }
 
 #[derive(Default, Debug, Clone, PartialEq)]
-pub struct Dimension(Vec<(Quantity, i32)>);
+pub struct Dimension(Vec<(Quantity, Rational)>);
+
+impl Display for Dimension {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut numerator = String::new();
+        let mut denominator = String::new();
+
+        for (quantity, power) in self.0.iter() {
+            let mut quantity_shorthand = quantity.shorthand().to_string();
+
+            if *power > Rational::from(0) {
+                if !numerator.is_empty() {
+                        quantity_shorthand = format!("*{}", quantity_shorthand);
+                }
+                numerator.push_str(&*quantity_shorthand);
+                if *power > Rational::from(1) {
+                    numerator.push_str(&format!("^{}", power));
+                }
+            } else if *power < Rational::from(0) {
+                if !denominator.is_empty() {
+                        quantity_shorthand = format!("*{}", quantity_shorthand);
+                }
+                denominator.push_str(&*quantity_shorthand);
+                if *power < Rational::from(-1) {
+                    let mut negative = Rational::new();
+                    negative.assign(power.neg());
+                    denominator.push_str(&format!("^{}", negative));
+                }
+            }
+        }
+
+        if !numerator.is_empty() {
+            write!(f, "{}", numerator)?;
+        }
+
+        if !denominator.is_empty() {
+            write!(f, "/{}", denominator)?;
+        }
+
+        Ok(())
+    }
+}
 
 impl Dimension {
-    pub fn new(quantities: Vec<(Quantity, i32)>) -> Self {
+    pub fn new(quantities: Vec<(Quantity, Rational)>) -> Self {
         Self(quantities).simplify()
     }
     pub fn simplify(&self) -> Self {
@@ -100,9 +161,12 @@ impl Dimension {
                 }
             }
             if !found {
-                new_dimension.push((quantity.clone(), *power));
+                new_dimension.push((quantity.clone(), power.clone()));
             }
         }
+
+        // Remove any quantities with a power of 0
+        new_dimension.retain(|(_, power)| *power != Rational::from(0));
 
         Dimension(new_dimension)
     }
@@ -143,7 +207,7 @@ impl Dimension {
     }
 
     pub fn apply_quantity_map(&mut self, quantity_map: &BTreeMap<QuantityKind, Quantity>) {
-        for (quantity, power) in self.0.iter_mut() {
+        for (quantity, _power) in self.0.iter_mut() {
             let quantity_kind = quantity.quantity_kind();
             if let Some(new_quantity) = quantity_map.get(&quantity_kind) {
                 *quantity = new_quantity.clone();
@@ -151,17 +215,27 @@ impl Dimension {
         }
     }
 
+    pub fn pow(&self, power: Rational) -> Self {
+        let mut new_dimension = Vec::new();
+
+        for (quantity, old_power) in self.0.iter() {
+            new_dimension.push((quantity.clone(), old_power.clone() * power.clone()));
+        }
+
+        Dimension(new_dimension).simplify()
+    }
+
     /// Returns the ratio of this dimension to another dimension.
-    pub fn get_ratio(&self, other: &Self) -> Option<BigRational> {
+    pub fn get_ratio(&self, other: &Self) -> Option<Rational> {
         if !self.sanity_check() || !other.sanity_check() {
             return None;
         }
 
         if self == other {
-            return Some(BigRational::from_integer(num::BigInt::from(1)));
+            return Some(Rational::from(1));
         }
 
-        let mut ratio = BigRational::from_integer(num::BigInt::from(1));
+        let mut ratio = Rational::from(1);
 
         for (quantity, power) in self.0.iter() {
             let mut found = false;
@@ -170,8 +244,14 @@ impl Dimension {
                     if *power != *other_power {
                         return None;
                     }
-                    let quantity_ratio = quantity.get_ratio().pow(*power)
-                        / other_quantity.get_ratio().pow(*other_power);
+
+                    let quantity_ratio = quantity.get_ratio() / other_quantity.get_ratio();
+
+                    let quantity_ratio =
+                        Float::with_val(128, quantity_ratio).pow(Float::with_val(128, power));
+
+                    let quantity_ratio = quantity_ratio.to_rational().unwrap();
+
                     ratio /= quantity_ratio;
                     found = true;
                 }
@@ -183,29 +263,45 @@ impl Dimension {
 
         Some(ratio)
     }
+
+    pub fn is_unitless(&self) -> bool {
+        self.0.is_empty()
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct Value {
     pub dimension: Dimension,
-    pub value: BigRational,
+    pub value: Float,
 }
 
 impl From<f64> for Value {
     fn from(value: f64) -> Self {
         Self {
             dimension: Default::default(),
-            value: BigRational::from_f64(value).unwrap(),
+            value: Float::with_val(128, value),
         }
     }
 }
 
 impl Value {
-    pub fn new(value: BigRational, dimension: Option<Dimension>) -> Self {
+    pub fn new(value: Float, dimension: Option<Dimension>) -> Self {
         Self {
             dimension: dimension.unwrap_or(Default::default()),
             value,
         }
+    }
+
+    pub fn into_parts(self) -> (Float, Dimension) {
+        (self.value, self.dimension)
+    }
+
+    pub fn value(&self) -> Float {
+        self.value.clone()
+    }
+
+    pub fn dimension(&self) -> Dimension {
+        self.dimension.clone()
     }
 
     pub fn simplify(&mut self) {
@@ -247,7 +343,7 @@ impl Value {
 
         let mut dim = self.dimension.0.clone();
         for (quantity, power) in new_dimension.0.iter() {
-            dim.push((quantity.clone(), *power));
+            dim.push((quantity.clone(), power.clone()));
         }
 
         Some(Self {
@@ -262,7 +358,13 @@ impl Value {
                 self.dimension
                     .0
                     .iter()
-                    .map(|(quantity, power)| (quantity.clone(), -power))
+                    .map(|(quantity, power)| {
+                        (quantity.clone(), {
+                            let mut power = power.clone();
+                            power.neg_assign();
+                            power
+                        })
+                    })
                     .collect(),
             ),
             value: self.value.clone().recip(),
@@ -271,6 +373,23 @@ impl Value {
 
     pub fn try_div(&self, other: &Self) -> Option<Self> {
         self.try_mul(&other.reciprocal())
+    }
+
+    pub fn try_pow(&self, other: &Self) -> Option<Self> {
+        if !other.dimension.is_unitless() {
+            return None;
+        }
+
+        let power = &other.value;
+
+        let new_dimension = self.dimension.pow(power.to_rational().unwrap());
+
+        let value = self.value.clone().pow(power);
+
+        Some(Self {
+            dimension: new_dimension,
+            value,
+        })
     }
 
     pub fn is_unitless(&self) -> bool {
@@ -292,29 +411,26 @@ mod test {
     #[test]
     fn test_conversion() {
         let area = Value::new(
-            BigRational::from_float(2.0).unwrap(),
+            Float::with_val(53, 2.0),
             Some(Dimension(vec![(
                 Quantity::Length(length::Length::Kilometer),
-                2,
+                Rational::from(2),
             )])),
         );
 
         let area = area.convert(&Dimension(vec![(
             Quantity::Length(length::Length::Meter),
-            2,
+            Rational::from(2),
         )]));
 
-        assert_eq!(
-            area.unwrap().value,
-            BigRational::from_float(2000000.0).unwrap()
-        );
+        assert_eq!(area.unwrap().value, Float::with_val(53, 2_000_000.0));
     }
 
     #[test]
     fn dimension_sanity_check_returns_true_for_sane_dimension() {
         let dimension = Dimension(vec![
-            (Quantity::Length(length::Length::Meter), 2),
-            (Quantity::Time(time::Time::Second), 1),
+            (Quantity::Length(length::Length::Meter), Rational::from(2)),
+            (Quantity::Time(time::Time::Second), Rational::from(1)),
         ]);
 
         assert!(dimension.sanity_check());
@@ -323,8 +439,11 @@ mod test {
     #[test]
     fn dimension_sanity_check_returns_false_for_insane_dimension() {
         let dimension = Dimension(vec![
-            (Quantity::Length(length::Length::Meter), 2),
-            (Quantity::Length(length::Length::Kilometer), 1),
+            (Quantity::Length(length::Length::Meter), Rational::from(2)),
+            (
+                Quantity::Length(length::Length::Kilometer),
+                Rational::from(1),
+            ),
         ]);
 
         assert!(!dimension.sanity_check());
@@ -333,41 +452,41 @@ mod test {
     #[test]
     fn value_try_add_returns_some_for_compatible_dimensions() {
         let value1 = Value::new(
-            BigRational::from_integer(num::BigInt::from(2)),
+            Float::with_val(53, 2),
             Some(Dimension(vec![(
                 Quantity::Length(length::Length::Meter),
-                1,
+                Rational::from(1),
             )])),
         );
         let value2 = Value::new(
-            BigRational::from_integer(num::BigInt::from(3)),
+            Float::with_val(53, 3),
             Some(Dimension(vec![(
                 Quantity::Length(length::Length::Meter),
-                1,
+                Rational::from(1),
             )])),
         );
 
         let result = value1.try_add(&value2);
 
         assert!(result.is_some());
-        assert_eq!(
-            result.unwrap().value,
-            BigRational::from_integer(num::BigInt::from(5))
-        );
+        assert_eq!(result.unwrap().value, Float::with_val(53, 5));
     }
 
     #[test]
     fn value_try_add_returns_none_for_incompatible_dimensions() {
         let value1 = Value::new(
-            BigRational::from_integer(num::BigInt::from(2)),
+            Float::with_val(53, 2),
             Some(Dimension(vec![(
                 Quantity::Length(length::Length::Meter),
-                1,
+                Rational::from(1),
             )])),
         );
         let value2 = Value::new(
-            BigRational::from_integer(num::BigInt::from(3)),
-            Some(Dimension(vec![(Quantity::Time(time::Time::Second), 1)])),
+            Float::with_val(53, 3),
+            Some(Dimension(vec![(
+                Quantity::Time(time::Time::Second),
+                Rational::from(1),
+            )])),
         );
 
         let result = value1.try_add(&value2);
@@ -378,49 +497,46 @@ mod test {
     #[test]
     fn value_try_mul_returns_some() {
         let value1 = Value::new(
-            BigRational::from_integer(num::BigInt::from(2)),
+            Float::with_val(53, 2),
             Some(Dimension(vec![(
                 Quantity::Length(length::Length::Meter),
-                1,
+                Rational::from(1),
             )])),
         );
         let value2 = Value::new(
-            BigRational::from_integer(num::BigInt::from(3)),
-            Some(Dimension(vec![(Quantity::Time(time::Time::Second), 1)])),
+            Float::with_val(53, 3),
+            Some(Dimension(vec![(
+                Quantity::Time(time::Time::Second),
+                Rational::from(1),
+            )])),
         );
 
         let result = value1.try_mul(&value2);
 
         assert!(result.is_some());
-        assert_eq!(
-            result.unwrap().value,
-            BigRational::from_integer(num::BigInt::from(6))
-        );
+        assert_eq!(result.unwrap().value, Float::with_val(53, 6));
     }
 
     #[test]
     fn value_try_div_returns_some() {
         let value1 = Value::new(
-            BigRational::from_integer(num::BigInt::from(2)),
+            Float::with_val(53, 2),
             Some(Dimension(vec![(
                 Quantity::Length(length::Length::Meter),
-                1,
+                Rational::from(1),
             )])),
         );
         let value2 = Value::new(
-            BigRational::from_integer(num::BigInt::from(1)),
+            Float::with_val(53, 1),
             Some(Dimension(vec![(
                 Quantity::Length(length::Length::Meter),
-                1,
+                Rational::from(1),
             )])),
         );
 
         let result = value1.try_div(&value2);
 
         assert!(result.is_some());
-        assert_eq!(
-            result.unwrap().value,
-            BigRational::from_integer(num::BigInt::from(2))
-        );
+        assert_eq!(result.unwrap().value, Float::with_val(53, 2));
     }
 }

@@ -6,7 +6,7 @@
     "distDir": "../dist"
   },
   "package": {
-    "productName": "tale",
+    "productName": "Siffra",
     "version": "0.0.0"
   },
   "tauri": {
@@ -15,12 +15,16 @@
       "shell": {
         "all": false,
         "open": true
+      },
+      "window": {
+        "startDragging": true,
+        "setAlwaysOnTop": true
       }
     },
     "bundle": {
       "active": true,
       "targets": "all",
-      "identifier": "com.tauri.dev",
+      "identifier": "dev.impossiblereality.tale",
       "icon": [
         "icons/32x32.png",
         "icons/128x128.png",
@@ -36,9 +40,14 @@
       {
         "fullscreen": false,
         "resizable": true,
-        "title": "Tale",
+        "title": "Siffra",
         "width": 800,
-        "height": 600
+        "height": 600,
+        "minWidth": 300,
+        "minHeight": 130,
+        "titleBarStyle": "Overlay",
+        "theme": "Dark",
+        "hiddenTitle": true
       }
     ]
   }

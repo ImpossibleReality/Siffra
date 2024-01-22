@@ -1,16 +1,15 @@
-mod representation;
+pub mod representation;
 
 use lazy_static;
 use pest::iterators::{Pair, Pairs};
 use representation::*;
 
-use crate::grammar::representation::ParsedExpr::BinOp;
 use pest::pratt_parser::PrattParser;
 use pest_derive::Parser;
 
 #[derive(Parser)]
-#[grammar = "src/grammar/tale.pest"]
-pub struct TaleParser;
+#[grammar = "src/grammar/siffra.pest"]
+pub struct SiffraParser;
 
 lazy_static::lazy_static! {
     static ref PRATT_PARSER: PrattParser<Rule> = {
@@ -23,11 +22,11 @@ lazy_static::lazy_static! {
             .op(Op::infix(add, Left) | Op::infix(subtract, Left))
             .op(Op::infix(multiply, Left)
                 | Op::infix(divide, Left)
-                | Op::prefix(Rule::negative)
-                | Op::postfix(Rule::convert)
-                | Op::postfix(Rule::percent))
+                | Op::prefix(negative)
+                | Op::postfix(convert)
+                | Op::postfix(percent))
             .op(Op::infix(exponent, Right))
-            .op(Op::postfix(Rule::factorial))
+            .op(Op::postfix(factorial))
     };
 }
 
@@ -39,8 +38,6 @@ pub fn parse_unit_expr(mut pairs: Pairs<Rule>) -> ParsedDimension {
         numerator: vec![],
         denominator: vec![],
     };
-
-    dbg!(&pairs, &numerator, &denominator);
 
     fn parse_mul_group(pair: Pair<Rule>, array: &mut Vec<(ParsedUnit, i32)>) {
         if pair.as_str() != "1" {
@@ -58,11 +55,11 @@ pub fn parse_unit_expr(mut pairs: Pairs<Rule>) -> ParsedDimension {
                     .find_first_tagged("name")
                     .is_some()
                 {
-                    // Unit has chemical.rs
+                    // Unit has chemical
                     let chemical = unit
                         .clone()
                         .into_inner()
-                        .find_first_tagged("chemical.rs")
+                        .find_first_tagged("chemical")
                         .unwrap()
                         .as_str()
                         .to_string();
@@ -122,7 +119,7 @@ pub fn parse_unit_expr(mut pairs: Pairs<Rule>) -> ParsedDimension {
                 let chemical = unit
                     .clone()
                     .into_inner()
-                    .find_first_tagged("chemical.rs")
+                    .find_first_tagged("chemical")
                     .unwrap()
                     .as_str()
                     .to_string();
@@ -186,7 +183,7 @@ pub fn parse_expr(pairs: Pairs<Rule>) -> ParsedExpr {
                 name: primary.as_str().to_string(),
             },
             Rule::ungrouped_function => {
-                let mut inner = primary.into_inner();
+                let inner = primary.into_inner();
                 let name = inner
                     .find_first_tagged("name")
                     .unwrap()
@@ -195,12 +192,12 @@ pub fn parse_expr(pairs: Pairs<Rule>) -> ParsedExpr {
                 let arg = inner.find_first_tagged("input").unwrap();
                 ParsedExpr::FunctionCall {
                     name,
-                    args: vec![parse_expr(arg.into_inner())],
+                    args: vec![parse_expr(Pairs::single(arg))],
                     base: None,
                 }
             }
             Rule::grouped_function | Rule::base_function => {
-                let mut inner = primary.into_inner();
+                let inner = primary.into_inner();
                 let name = inner
                     .find_first_tagged("name")
                     .unwrap()
@@ -217,7 +214,7 @@ pub fn parse_expr(pairs: Pairs<Rule>) -> ParsedExpr {
                 ParsedExpr::FunctionCall { name, args, base }
             }
             Rule::grouped_mul_atom => {
-                let mut inner = primary.into_inner();
+                let inner = primary.into_inner();
 
                 let mut pairs = inner.peekable();
                 let mut expr = parse_expr(Pairs::single(pairs.next().unwrap()));
@@ -278,6 +275,33 @@ pub fn parse_expr(pairs: Pairs<Rule>) -> ParsedExpr {
         .parse(pairs)
 }
 
+pub fn parse_line(mut pairs: Pairs<Rule>) -> ParsedLine {
+    if let Some(pair) = pairs
+        .clone()
+        .find(|pair| pair.as_rule() == Rule::variable_constraint)
+    {
+        let mut inner = pair.into_inner();
+        let name = inner
+            .find(|pair| pair.as_rule() == Rule::variable)
+            .unwrap()
+            .as_str();
+        let expr = parse_expr(
+            inner
+                .find(|pair| pair.as_rule() == Rule::expr)
+                .unwrap()
+                .into_inner(),
+        );
+        return ParsedLine::Variable(name.to_string(), expr);
+    }
+
+    if let Some(pair) = pairs.find(|pair| pair.as_rule() == Rule::expr) {
+        let expr = parse_expr(pair.into_inner());
+        return ParsedLine::Expression(expr);
+    }
+
+    ParsedLine::Comment
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -285,7 +309,23 @@ mod tests {
 
     #[test]
     fn test_parse_expr() {
-        let expr = parse_expr(TaleParser::parse(Rule::expr, "log2(5(x)(y)) as mol %").unwrap());
-        println!("{:?}", expr);
+        let expr = parse_expr(SiffraParser::parse(Rule::expr, "log2(5(x)(y)) as mol %").unwrap());
+    }
+
+    #[test]
+    fn test_parse_line() {
+        let line = parse_line(SiffraParser::parse(Rule::line, "x = 5").unwrap());
+        assert!(matches!(line, ParsedLine::Variable(_, _)));
+        let line = parse_line(SiffraParser::parse(Rule::line, "log2(5(x)(y)) as mol %").unwrap());
+        assert!(matches!(line, ParsedLine::Expression(_)));
+        let line = parse_line(SiffraParser::parse(Rule::line, "// This is a comment").unwrap());
+        assert!(matches!(line, ParsedLine::Comment));
+        let line = parse_line(SiffraParser::parse(Rule::line, "/* This is a comment */").unwrap());
+        assert!(matches!(line, ParsedLine::Comment));
+    }
+
+    #[test]
+    fn test_ungrouped_functions() {
+        let expr = parse_expr(SiffraParser::parse(Rule::expr, "log 5a").unwrap());
     }
 }

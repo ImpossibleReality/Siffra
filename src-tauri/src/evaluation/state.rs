@@ -1,8 +1,11 @@
-pub struct TaleState {
+use crate::representations::Value;
+use std::collections::BTreeMap;
+
+pub struct SiffraState {
     variables: BTreeMap<String, Value>,
 }
 
-impl TaleState {
+impl SiffraState {
     pub fn new() -> Self {
         Self {
             variables: BTreeMap::new(),

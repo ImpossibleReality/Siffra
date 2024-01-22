@@ -1,12 +1,12 @@
 WHITESPACE = _{ " " }
-COMMENT = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
+COMMENT = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" | "//" ~ (ANY ~ !NEWLINE)* }
 
 digit = { '0'..'9' }
 digits = _{ digit+ }
 
 ident = @{ (ASCII_ALPHA) ~ (ASCII_ALPHANUMERIC | "_")* }
 
-number = @{ digits ~ ("." ~ digits)? }
+number = @{ digits ~ ("." ~ digits)? ~ ("E" ~ "-"? ~ digits)? }
 
 element_name = @{ ASCII_ALPHA_UPPER ~ ASCII_ALPHA_LOWER? }
 
@@ -32,23 +32,6 @@ mass_units_long = _{
 
 mass_units = _{ mass_units_short | mass_units_long }
 
-length_units_short = _{
-    "mm" | "m" | SI_prefix_short? ~ "m" | "in" | "ft" | "yd" | "mi" | "nmi" | "ly" | "au" | "pc" | "pt" | "px" | "em" | "rem" | "ex" | "ch" | "lh" | "vw" | "vh" | "vmin" | "vmax" | "cm" | "mm" | "km" | "dm" | "hm" | "dam" | "nm" | "pm" | "fm" | "am" | "zm" | "ym"
-}
-
-length_units_long = _{
-    (SI_prefix_long? ~ "meter" | "inch" | "foot" | "feet" | "yard" | "mile" | "nautical mile" | "light year" | "astronomical unit" | "parsec" | "point" | "pixel" | "em" | "rem") ~ ("s" | "es")?
-}
-
-length_units = _{ length_units_short | length_units_long }
-
-time_units_short = _{
-    SI_prefix_short? ~ "s" | "min" | "h" | "d" | "wk" | "mo" | "yr" | "dec" | "cent" | "mill"
-}
-
-time_units_long = _{
-    (SI_prefix_long? ~ "second" | "minute" | "hour" | "day" | "week" | "month" | "year" | "decade" | "century" | "millennium") ~ ("s" | "es")?
-}
 
 amount_units_short = _{
     "mol" | SI_prefix_short ~ "mol"
@@ -58,45 +41,26 @@ amount_units_long = _{
     ("mole" | SI_prefix_long ~ "mole") ~ ("s" | "es")?
 }
 
-temperature_units_short = _{
-    "K" | "C" | "F" | "R" | "Ra" | "Re" | "Ro" | "De"
-}
-
-temperature_units_long = _{
-    "kelvin" | "celsius" | "fahrenheit" | "rankine" | "reaumur" | "romer" | "delisle"
-}
-
-data_units_short = _{
-    SI_prefix_short? ~ "b" | "B"
-}
-
-data_units_long = _{
-    (SI_prefix_long? ~ "bit" | "byte") ~ "s"?
-}
-
-units_short = _{amount_units_short | mass_units_short | length_units_short | time_units_short | temperature_units_short | data_units_short }
-units_long = _{amount_units_long | mass_units_long | length_units_long | time_units_long | temperature_units_long | data_units_long }
-
 chemical_unit = @{(amount_units_short | amount_units_long | mass_units_short | mass_units_long)}
 
 chemical_unit_expr = ${ #name = chemical_unit ~ " " ~ #chemical = chemical }
 
 ungrouped_unit_atom = ${ chemical_unit_expr }
 
-grouped_unit_atom = ${"(" ~ (ungrouped_unit_atom | grouped_unit_atom) ~ ")" | units_long | units_short}
+grouped_unit_atom = ${"(" ~ (ungrouped_unit_atom | grouped_unit_atom) ~ ")" | ASCII_ALPHA_LOWER+}
 
 integer = @{"-"? ~ ASCII_DIGIT+}
 
-unit_power = ${#unit = grouped_unit_atom ~ ("^" ~ #power = integer)?}
+unit_power = ${#unit = grouped_unit_atom ~ ("^" ~ #power = integer)? ~ "*"? | "(" ~ unit_power ~ ")"}
 
 unit_mul_group = ${unit_power+}
 
-convert_expr = @{ ("in" | "as" | "to") ~ " " ~ units_expr }
+convert_expr = @{ ("in" | "as" | "to" | "into") ~ " " ~ units_expr }
 
 units_expr_numerator = ${((#numerator = unit_mul_group) | "1") | "(" ~ units_expr_numerator ~ ")"}
 units_expr_denomimator = ${((#denominator = unit_mul_group) | "1") | "(" ~ units_expr_numerator ~ ")"}
 
-units_expr_inner = _{!bin_op ~ !convert_expr ~ (ungrouped_unit_atom | units_expr_numerator ~ "/" ~ units_expr_denomimator | units_expr_numerator)}
+units_expr_inner = _{!bin_op ~ !convert_expr ~ (units_expr_numerator ~ "/" ~ units_expr_denomimator | units_expr_numerator)}
 
 units_expr = ${"(" ~ units_expr_inner ~ ")" ~ !"/" | units_expr_inner}
 
@@ -145,4 +109,9 @@ declaration_constraint = !{ "let " ~ variable ~ "=" ~ expr }
 
 variable_constraint = !{variable ~ "=" ~ expr}
 
-line = _{ SOI ~ (declaration_constraint | declaration | variable_constraint | constraint | expr) ~ EOI }
+comment = @{""}
+macro_name = ${(ASCII_ALPHANUMERIC | "_")*}
+macro_input = ${(ANY ~ !NEWLINE)+}
+macro = ${"#" ~ #name = macro_name ~ (" " ~ #input = macro_input)?}
+
+line = _{ SOI ~ (macro | declaration_constraint | declaration | variable_constraint | constraint | expr | comment) ~ EOI }

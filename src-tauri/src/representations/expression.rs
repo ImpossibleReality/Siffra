@@ -11,5 +11,4 @@ pub enum Expression {
     Add(Box<Expression>, Box<Expression>),
     Subtract(Box<Expression>, Box<Expression>),
     Exponent(Box<Expression>, Box<Expression>),
-    Log(Box<Expression>, Box<Expression>),
 }

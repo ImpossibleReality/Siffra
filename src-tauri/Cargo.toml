@@ -1,26 +1,24 @@
 [package]
-name = "tale-desktop"
+name = "siffra-desktop"
 version = "0.0.0"
 description = "A Tauri App"
-authors = ["you"]
+authors = ["Impossible Reality"]
 license = ""
 repository = ""
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [build-dependencies]
 tauri-build = { version = "1.5", features = [] }
 
 [dependencies]
-tauri = { version = "1.5", features = ["shell-open"] }
+tauri = { version = "1.5", features = [ "window-set-always-on-top", "window-start-dragging", "shell-open"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 lazy_static = "1.4.0"
 pest = { version = "2.7" }
 pest_derive = { version="2.7.5", features = ["grammar-extras"] }
-num = "0.4.1"
 periodic-table-on-an-enum = "0.3.2"
+rug = { version = "1.23.0", features = ["integer", "rational", "float"], default-features = false }
 
 [features]
 # this feature is used for production builds or when `devPath` points to the filesystem

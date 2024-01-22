@@ -1,2 +1,3 @@
+pub mod evaluation;
 pub mod grammar;
-mod representations;
+pub mod representations;
