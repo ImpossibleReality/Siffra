@@ -32,7 +32,7 @@ jobs:
         if: matrix.platform == 'windows-latest'
         run: |
           powershell -c "irm bun.sh/install.ps1|iex"
-          powershell -c "$env:Path += ';C:\Users\runneradmin\.bun\bin"
+          powershell -c "$env:Path += ';C:\Users\runneradmin\.bun\bin'"
 
       - name: install Rust stable
         uses: dtolnay/rust-toolchain@stable
