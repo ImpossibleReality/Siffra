@@ -1,5 +1,5 @@
-<div style="text-align: center">
-    <img src="src-tauri/app-icon.png" alt="Siffra logo" width="128" height="128">
+<div align="center">
+    <img src="src-tauri/app-icon.png" alt="Siffra logo" width="196" height="196">
 </div>
 
 
