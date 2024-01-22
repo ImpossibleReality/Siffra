@@ -45,7 +45,8 @@ jobs:
         if: matrix.platform == 'windows-latest'
         run: npm install
 
-      - uses: tauri-apps/tauri-action@v0
+      - name: build tauri release (except windows)
+        uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -54,3 +55,16 @@ jobs:
           releaseBody: 'See the assets to download this version and install.'
           releaseDraft: true
           prerelease: false
+
+      - name: build tauri release (windows only)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: app-v__VERSION__ # the action automatically replaces \_\_VERSION\_\_ with the app version
+          releaseName: 'Siffra v__VERSION__'
+          releaseBody: 'See the assets to download this version and install.'
+          releaseDraft: true
+          prerelease: false
+          args: |
+            -c '{"build": {"beforeBuildCommand": "npm run build"}}'
