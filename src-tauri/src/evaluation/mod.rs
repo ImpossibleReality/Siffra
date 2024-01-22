@@ -91,7 +91,7 @@ pub fn evaluate_expr(expr: &Expression, state: &SiffraState) -> Result<Value, ()
                         Ok(Value::new(args[0].value.clone().log10(), None))
                     } else if args.len() == 2 {
                         Ok(Value::new(
-                            args[0].value.clone().ln() / args[1].value.clone().ln(),
+                            args[1].value.clone().ln() / args[0].value.clone().ln(),
                             None,
                         ))
                     } else {
