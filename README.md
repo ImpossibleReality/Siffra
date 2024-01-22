@@ -32,7 +32,7 @@ note: Siffra currently only *officially* supports macOS due to testing limitatio
 
 Because Siffra is still under heavy development, I am not currently accepting contributions. However, once the project is more stable, I will be accepting contributions. Please do, however, feel free to [open an issue](https://github.com/ImpossibleReality/Siffra/issues/new) if you find a bug or have a feature request.
 
-# Supporting the project
+## Supporting the project
 If you would like to support my future work, you can do so by buying me a coffee using the button below. Thank you!
 
 <a href="https://www.buymeacoffee.com/johannovak" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 30px !important;width: 108.5px !important;" ></a>
