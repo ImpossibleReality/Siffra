@@ -2553,7 +2553,7 @@ dependencies = [
 
 [[package]]
 name = "siffra-desktop"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "astro-float",
  "lazy_static",
