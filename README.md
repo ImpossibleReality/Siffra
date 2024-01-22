@@ -8,6 +8,10 @@
 Siffra is a beautiful, lightweight, fast, and accurate calculator with support for dimensional analysis.
 The project is currently in heavy development, and is not currently stable yet. However, it is usable.
 
+<div align="center">
+    <img src="screenshot.png" alt="Siffra screenshot">
+</div>
+
 ## Installation
 ### Building from source
 To build Siffra from source, you will need to have the following installed:
