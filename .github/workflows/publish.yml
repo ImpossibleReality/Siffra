@@ -38,9 +38,11 @@ jobs:
           sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev libappindicator3-dev librsvg2-dev patchelf
 
       - name: install frontend dependencies (except windows)
+        if: matrix.platform != 'windows-latest'
         run: bun install
 
       - name: install frontend dependences (Windows only)
+        if: matrix.platform == 'windows-latest'
         run: npm install
 
       - uses: tauri-apps/tauri-action@v0
