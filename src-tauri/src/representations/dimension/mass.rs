@@ -5,7 +5,7 @@ quantity!(
     [
         // SI units
         (Gram, ratio!(1 / 1), "g", "gram", "grams"),
-        (Kilogram, ratio!(1000 / 1), "kg", "kilogram", "kilograms"),
+        (Kilogram, ratio!(1_000 / 1), "kg", "kilogram", "kilograms"),
         (Tonne, ratio!(1_000_000 / 1), "t", "tonne", "tonnes"),
         (Milligram, ratio!(1 / 1000), "mg", "milligram", "milligrams"),
         (

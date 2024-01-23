@@ -14,6 +14,7 @@ lazy_static! {
 
 const PRECISION: usize = 256;
 const ROUNDING_MODE: RoundingMode = RoundingMode::ToEven;
+const MAX_LEN_BEFORE_SCIENTIFIC_NOTATION: i32 = 9;
 
 #[derive(Debug, Clone)]
 pub struct Float(BigFloat);
@@ -21,7 +22,8 @@ pub struct Float(BigFloat);
 impl Float {
     pub fn parse(s: &str) -> Result<Self, ()> {
         let mut cache = CONST_CACHE.lock().unwrap();
-        let res = BigFloat::parse(s, Radix::Dec, PRECISION, ROUNDING_MODE, &mut *cache);
+        let s = s.trim().replace('_', "").replace(',', "");
+        let res = BigFloat::parse(&s, Radix::Dec, PRECISION, ROUNDING_MODE, &mut *cache);
         if res.is_nan() {
             Err(())
         } else {
@@ -129,8 +131,6 @@ impl Display for Float {
             sign = true;
         }
 
-        dbg!(mantissa.clone(), exponent.clone(), sign.clone());
-
         // remove decimal point
         mantissa.remove(1);
 
@@ -160,12 +160,17 @@ impl Display for Float {
             mantissa.remove(0);
         }
 
-        if exponent <= 6 && exponent >= -6 {
-            // add 6 leading zeros
-            mantissa.insert_str(0, "000000");
+        if exponent <= MAX_LEN_BEFORE_SCIENTIFIC_NOTATION
+            && exponent >= -MAX_LEN_BEFORE_SCIENTIFIC_NOTATION
+        {
+            // add leading zeros
+            mantissa.insert_str(0, &"0".repeat(MAX_LEN_BEFORE_SCIENTIFIC_NOTATION as usize));
 
             // add decimal point
-            mantissa.insert_str((7 + exponent) as usize, ".");
+            mantissa.insert_str(
+                (MAX_LEN_BEFORE_SCIENTIFIC_NOTATION + 1 + exponent) as usize,
+                ".",
+            );
 
             // remove trailing zeros
             while mantissa.ends_with('0') {
@@ -184,6 +189,28 @@ impl Display for Float {
 
             if mantissa.starts_with('.') {
                 mantissa.insert(0, '0');
+            }
+
+            // add commas separating every 3 digits before decimal point
+            let mut i = 0;
+            while i < mantissa.len() {
+                if mantissa.chars().nth(i).unwrap() == '.' {
+                    break;
+                }
+                i += 1;
+            }
+
+            if i > 3 {
+                let mut i = i - 3;
+
+                loop {
+                    mantissa.insert(i, ',');
+                    if i > 3 {
+                        i -= 3;
+                    } else {
+                        break;
+                    }
+                }
             }
 
             if sign {
@@ -298,6 +325,10 @@ mod tests {
     #[test]
     fn test_string() {
         assert_eq!(Float::parse("-10.123").unwrap().to_string(), "-10.123");
+        assert_eq!(
+            Float::parse("-1,000,000.245").unwrap().to_string(),
+            "-1,000,000.245"
+        );
         assert_eq!(Float::parse("001.00").unwrap().to_string(), "1");
         assert_eq!(Float::parse("5e-20").unwrap().to_string(), "5E-20");
         assert_eq!(Float::parse("999").unwrap().to_string(), "999");

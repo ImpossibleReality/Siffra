@@ -250,9 +250,11 @@ impl Dimension {
                         return None;
                     }
 
-                    let quantity_ratio = &quantity.get_ratio() / &other_quantity.get_ratio();
+                    let mut quantity_ratio = &other_quantity.get_ratio() / &quantity.get_ratio();
 
-                    ratio = &ratio / &quantity_ratio;
+                    quantity_ratio = quantity_ratio.pow(power);
+
+                    ratio = &ratio * &quantity_ratio;
                     found = true;
                 }
             }

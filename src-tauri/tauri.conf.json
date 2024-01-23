@@ -49,6 +49,14 @@
         "theme": "Dark",
         "hiddenTitle": true
       }
-    ]
+    ],
+    "updater": {
+      "active": true,
+      "endpoints": [
+        "https://github.com/ImpossibleReality/Siffra/releases/latest/download/latest.json"
+      ],
+      "dialog": true,
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDcxNzFGQTI1MTE3M0YzRjcKUldUMzgzTVJKZnB4Y2VIdGl4ZWhvVGkwdlpQL2VxTlJha3Fmd2Ztb2p5TmtJUUowRENQZ2pNMTEK"
+    }
   }
 }

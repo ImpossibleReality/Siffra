@@ -1,9 +1,6 @@
 use std::ops::{Add, Div, Mul, Neg, Sub};
 
-mod dimension;
-pub use dimension::*;
-mod float;
-pub use float::*;
+pub use crate::representations::*;
 
 #[derive(Debug, Clone)]
 pub struct Value {
@@ -133,35 +130,38 @@ impl Value {
         }
     }
 }
-/*
+
 #[cfg(test)]
 mod test {
-    use crate::representations::value::dimension::Quantity;
     use super::*;
+    use crate::representations::value::dimension::Quantity;
 
     #[test]
     fn test_conversion() {
         let area = Value::new(
-            Float::with_val(53, 2.0),
+            Float::parse("2.0").unwrap(),
             Some(Dimension(vec![(
-                Quantity::Length(dimension::Length::Kilometer),
-                Rational::from(2),
+                Quantity::Length(Length::Kilometer),
+                Float::parse("2.0").unwrap(),
             )])),
         );
 
         let area = area.convert(&Dimension(vec![(
-            Quantity::Length(dimension::Length::Meter),
-            Rational::from(2),
+            Quantity::Length(Length::Meter),
+            Float::parse("2.0").unwrap(),
         )]));
 
-        assert_eq!(area.unwrap().value, Float::with_val(53, 2_000_000.0));
+        assert_eq!(
+            area.unwrap().value.to_string(),
+            Float::parse("2000000").unwrap().to_string()
+        );
     }
 
     #[test]
     fn dimension_sanity_check_returns_true_for_sane_dimension() {
         let dimension = Dimension(vec![
-            (Quantity::Length(dimension::Length::Meter), Rational::from(2)),
-            (Quantity::Time(dimension::Time::Second), Rational::from(1)),
+            (Quantity::Length(dimension::Length::Meter), Float::from(2)),
+            (Quantity::Time(dimension::Time::Second), Float::from(1)),
         ]);
 
         assert!(dimension.sanity_check());
@@ -170,10 +170,10 @@ mod test {
     #[test]
     fn dimension_sanity_check_returns_false_for_insane_dimension() {
         let dimension = Dimension(vec![
-            (Quantity::Length(dimension::Length::Meter), Rational::from(2)),
+            (Quantity::Length(dimension::Length::Meter), Float::from(2)),
             (
                 Quantity::Length(dimension::Length::Kilometer),
-                Rational::from(1),
+                Float::from(1),
             ),
         ]);
 
@@ -183,40 +183,42 @@ mod test {
     #[test]
     fn value_try_add_returns_some_for_compatible_dimensions() {
         let value1 = Value::new(
-            Float::with_val(53, 2),
+            Float::parse("2").unwrap(),
             Some(Dimension(vec![(
                 Quantity::Length(dimension::Length::Meter),
-                Rational::from(1),
+                Float::parse("1").unwrap(),
             )])),
         );
+
         let value2 = Value::new(
-            Float::with_val(53, 3),
+            Float::parse("52").unwrap(),
             Some(Dimension(vec![(
                 Quantity::Length(dimension::Length::Meter),
-                Rational::from(1),
+                Float::parse("1").unwrap(),
             )])),
         );
 
         let result = value1.try_add(&value2);
 
         assert!(result.is_some());
-        assert_eq!(result.unwrap().value, Float::with_val(53, 5));
+        assert_eq!(result.unwrap().value, Float::parse("54").unwrap());
     }
 
     #[test]
     fn value_try_add_returns_none_for_incompatible_dimensions() {
         let value1 = Value::new(
-            Float::with_val(53, 2),
-            Some(Dimension(vec![(
-                Quantity::Length(dimension::Length::Meter),
-                Rational::from(1),
-            )])),
-        );
-        let value2 = Value::new(
-            Float::with_val(53, 3),
+            Float::parse("2").unwrap(),
             Some(Dimension(vec![(
                 Quantity::Time(dimension::Time::Second),
-                Rational::from(1),
+                Float::parse("1").unwrap(),
+            )])),
+        );
+
+        let value2 = Value::new(
+            Float::parse("2").unwrap(),
+            Some(Dimension(vec![(
+                Quantity::Length(dimension::Length::Meter),
+                Float::parse("1").unwrap(),
             )])),
         );
 
@@ -228,46 +230,48 @@ mod test {
     #[test]
     fn value_try_mul_returns_some() {
         let value1 = Value::new(
-            Float::with_val(53, 2),
+            Float::parse("2").unwrap(),
             Some(Dimension(vec![(
                 Quantity::Length(dimension::Length::Meter),
-                Rational::from(1),
+                Float::parse("2").unwrap(),
             )])),
         );
+
         let value2 = Value::new(
-            Float::with_val(53, 3),
+            Float::parse("3").unwrap(),
             Some(Dimension(vec![(
                 Quantity::Time(dimension::Time::Second),
-                Rational::from(1),
+                Float::parse("3").unwrap(),
             )])),
         );
 
         let result = value1.try_mul(&value2);
 
         assert!(result.is_some());
-        assert_eq!(result.unwrap().value, Float::with_val(53, 6));
+        assert_eq!(result.unwrap().value, Float::parse("6").unwrap());
     }
 
     #[test]
     fn value_try_div_returns_some() {
         let value1 = Value::new(
-            Float::with_val(53, 2),
+            Float::parse("10").unwrap(),
             Some(Dimension(vec![(
                 Quantity::Length(dimension::Length::Meter),
-                Rational::from(1),
+                Float::parse("2").unwrap(),
             )])),
         );
+
         let value2 = Value::new(
-            Float::with_val(53, 1),
+            Float::parse("2").unwrap(),
             Some(Dimension(vec![(
                 Quantity::Length(dimension::Length::Meter),
-                Rational::from(1),
+                Float::parse("2").unwrap(),
             )])),
         );
 
         let result = value1.try_div(&value2);
 
         assert!(result.is_some());
-        assert_eq!(result.unwrap().value, Float::with_val(53, 2));
+        assert_eq!(result.unwrap().value, Float::parse("5").unwrap());
     }
-} */
+}
