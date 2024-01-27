@@ -1,3 +1,7 @@
+# Cargo files
+Cargo.lock
+target/
+
 # Logs
 logs
 *.log

@@ -2,8 +2,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use serde::{Deserialize, Serialize};
-use siffra_desktop::evaluation::{evaluate_line, SiffraState};
-use siffra_desktop::representations::Value;
+use siffra::evaluation::{evaluate_line, SiffraState};
+use siffra::representations::Value;
 
 #[derive(Serialize, Deserialize)]
 struct SiffraLineOutput {
