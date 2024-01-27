@@ -51,6 +51,7 @@ note: Siffra currently only *officially* supports macOS due to testing limitatio
 - [ ] Preferences page
 - [ ] Plugin + theme system
 - [ ] CAS support
+- [ ] Graphing
 - [ ] Improved natural language support (AI?)
 
 ## Contributing
@@ -60,7 +61,7 @@ Because Siffra is still under heavy development, I am not currently accepting co
 ## Supporting the project
 Unlike other calculators that provide similar functionality, Siffra is open-source, which also means I am unable to make a profit off of it. If you would like to support my future work, you can do so by buying me a coffee using the button below. Thank you!
 
-<a href="https://www.buymeacoffee.com/johannovak" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 30px !important;width: 108.5px !important;" ></a>
+<a href="https://www.buymeacoffee.com/johannovak" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
 
 ## License
 
