@@ -1,7 +1,7 @@
+use crate::representations::Compound;
 use crate::representations::{Dimension, Quantity};
 use crate::representations::{Expression, Float, Value};
 use std::str::FromStr;
-use crate::representations::Compound;
 
 #[derive(Debug)]
 pub enum ParsedLine {
@@ -82,7 +82,10 @@ impl TryFrom<ParsedDimension> for Dimension {
             if !(unit.name == "unitless" || unit.name == "number") {
                 if let Some(chemical) = unit.chemical {
                     let compound = Compound::parse(chemical.as_str()).ok_or(())?;
-                    quantities.push((Quantity::from_str(unit.name.as_str())?.with_chemical(compound), Float::from(power)));
+                    quantities.push((
+                        Quantity::from_str(unit.name.as_str())?.with_chemical(compound),
+                        Float::from(power),
+                    ));
                 } else {
                     quantities.push((Quantity::from_str(unit.name.as_str())?, Float::from(power)));
                 }
@@ -93,7 +96,10 @@ impl TryFrom<ParsedDimension> for Dimension {
             if !(unit.name == "unitless" || unit.name == "number") {
                 if let Some(chemical) = unit.chemical {
                     let compound = Compound::parse(chemical.as_str()).ok_or(())?;
-                    quantities.push((Quantity::from_str(unit.name.as_str())?.with_chemical(compound), Float::from(-power)));
+                    quantities.push((
+                        Quantity::from_str(unit.name.as_str())?.with_chemical(compound),
+                        Float::from(-power),
+                    ));
                 } else {
                     quantities.push((Quantity::from_str(unit.name.as_str())?, Float::from(-power)));
                 }

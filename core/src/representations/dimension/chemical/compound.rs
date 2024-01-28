@@ -1,7 +1,7 @@
+use crate::representations::dimension::chemical::parse::parse_compound;
 use crate::representations::Element;
 use std::collections::BTreeMap;
 use std::fmt::Display;
-use crate::representations::dimension::chemical::parse::parse_compound;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct Compound(pub BTreeMap<Element, u16>);

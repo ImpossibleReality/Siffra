@@ -27,7 +27,7 @@ pub enum QuantityKind {
     Time,
     Mass,
     Amount,
-    Angle
+    Angle,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -96,14 +96,14 @@ impl Quantity {
                 } else {
                     mass.shorthand().to_string()
                 }
-            },
+            }
             Quantity::Amount(amount, compound) => {
                 if let Some(compound) = compound {
                     amount.shorthand().to_string() + " " + &*compound.to_string()
                 } else {
                     amount.shorthand().to_string()
                 }
-            },
+            }
             Quantity::Angle(angle) => angle.shorthand().to_string(),
         }
     }
@@ -292,10 +292,11 @@ impl Dimension {
                             let amount_ratio = &Amount::Mole.ratio() / &amount.ratio();
                             let mass_ratio = &Mass::Gram.ratio() / &mass.ratio();
 
-                            let mut quantity_ratio =  &mass_ratio / &amount_ratio;
+                            let mut quantity_ratio = &mass_ratio / &amount_ratio;
 
                             // Divide by particulate mass
-                            quantity_ratio = &quantity_ratio * &Float::parse(&*chemical.particulate_mass().to_string()).unwrap();
+                            quantity_ratio = &quantity_ratio
+                                * &Float::parse(&*chemical.particulate_mass().to_string()).unwrap();
 
                             ratio = &ratio * &quantity_ratio;
                             found = true;
@@ -321,7 +322,8 @@ impl Dimension {
                             let mut quantity_ratio = &amount_ratio / &mass_ratio;
 
                             // Multiply by particulate mass
-                            quantity_ratio = &quantity_ratio / &Float::parse(&*chemical.particulate_mass().to_string()).unwrap();
+                            quantity_ratio = &quantity_ratio
+                                / &Float::parse(&*chemical.particulate_mass().to_string()).unwrap();
 
                             ratio = &ratio * &quantity_ratio;
                             found = true;
