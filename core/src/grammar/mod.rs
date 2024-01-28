@@ -205,7 +205,9 @@ pub fn parse_expr(pairs: Pairs<Rule>) -> ParsedExpr {
                     .to_string();
                 let args = inner
                     .clone()
-                    .find_tagged("input")
+                    .find(|pair| pair.as_rule() == Rule::function_input)
+                    .unwrap()
+                    .into_inner()
                     .map(|p| parse_expr(Pairs::single(p)))
                     .collect();
                 let base = inner
@@ -327,5 +329,26 @@ mod tests {
     #[test]
     fn test_ungrouped_functions() {
         let _expr = parse_expr(SiffraParser::parse(Rule::expr, "log 5a").unwrap());
+    }
+
+    #[test]
+    fn test_nested_functions() {
+        let expr = parse_expr(SiffraParser::parse(Rule::expr, "sin(cos(5))").unwrap());
+        dbg!(&expr);
+        assert_eq!(
+            ParsedExpr::FunctionCall {
+                name: "sin".to_string(),
+                args: vec![ParsedExpr::FunctionCall {
+                    name: "cos".to_string(),
+                    args: vec![ParsedExpr::Number {
+                        value: "5".to_string(),
+                        units: None
+                    }],
+                    base: None,
+                }],
+                base: None,
+            },
+            expr
+        );
     }
 }

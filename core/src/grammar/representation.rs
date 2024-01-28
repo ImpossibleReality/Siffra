@@ -3,26 +3,26 @@ use crate::representations::{Dimension, Quantity};
 use crate::representations::{Expression, Float, Value};
 use std::str::FromStr;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ParsedLine {
     Comment,
     Expression(ParsedExpr),
     Variable(String, ParsedExpr),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ParsedUnit {
     pub(crate) name: String,
     pub(crate) chemical: Option<String>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ParsedDimension {
     pub(crate) numerator: Vec<(ParsedUnit, i32)>,
     pub(crate) denominator: Vec<(ParsedUnit, i32)>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ParsedExpr {
     Number {
         value: String,
@@ -51,19 +51,19 @@ pub enum ParsedExpr {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum OpPre {
     Negate,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum OpPost {
     Factorial,
     Percent,
     Convert(ParsedDimension),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Op {
     Add,
     Subtract,
@@ -126,6 +126,7 @@ impl TryFrom<ParsedExpr> for Expression {
             }
             ParsedExpr::Variable { name } => Ok(Expression::Variable(name)),
             ParsedExpr::FunctionCall { name, args, base } => {
+                dbg!(&args);
                 let mut expressions = Vec::with_capacity(args.len() + 1);
 
                 if let Some(base) = base {
