@@ -2,7 +2,7 @@ use crate::representations::Compound;
 use crate::representations::Element;
 use std::collections::BTreeMap;
 
-fn parse_compound(formula: String) -> Option<Compound> {
+pub fn parse_compound(formula: &str) -> Option<Compound> {
     let formula = formula.chars().collect::<Vec<_>>();
     let mut stack = vec![];
     stack.push(BTreeMap::new());
@@ -69,7 +69,7 @@ mod tests {
 
     #[test]
     fn parse_compound_returns_correct_compound_for_valid_formula() {
-        let formula = "H2O".to_string();
+        let formula = "H2O";
         let compound = parse_compound(formula).unwrap();
         let mut expected = BTreeMap::new();
         expected.insert(Element::from_symbol("H").unwrap(), 2);
@@ -79,18 +79,19 @@ mod tests {
 
     #[test]
     fn parse_compound_returns_correct_compound_for_formula_with_parentheses() {
-        let formula = "Ca(OH2)2".to_string();
+        let formula = "S(Ca(OH2)3)2";
         let compound = parse_compound(formula).unwrap();
         let mut expected = BTreeMap::new();
-        expected.insert(Element::from_symbol("Ca").unwrap(), 1);
-        expected.insert(Element::from_symbol("O").unwrap(), 2);
-        expected.insert(Element::from_symbol("H").unwrap(), 4);
+        expected.insert(Element::from_symbol("S").unwrap(), 1);
+        expected.insert(Element::from_symbol("Ca").unwrap(), 2);
+        expected.insert(Element::from_symbol("O").unwrap(), 6);
+        expected.insert(Element::from_symbol("H").unwrap(), 12);
         assert_eq!(compound.0, expected);
     }
 
     #[test]
     fn parse_compound_returns_none_for_invalid_formula() {
-        let formula = "H2O)2".to_string();
+        let formula = "H2O)2";
         let compound = parse_compound(formula);
         assert_eq!(compound, None);
     }

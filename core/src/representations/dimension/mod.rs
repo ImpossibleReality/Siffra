@@ -27,8 +27,7 @@ pub enum QuantityKind {
     Time,
     Mass,
     Amount,
-    Angle,
-    Compound(Compound),
+    Angle
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -69,29 +68,43 @@ impl FromStr for Quantity {
 }
 
 impl Quantity {
+    pub fn with_chemical(self, compound: Compound) -> Self {
+        match self {
+            Quantity::Mass(mass, _) => Quantity::Mass(mass, Some(compound)),
+            Quantity::Amount(amount, _) => Quantity::Amount(amount, Some(compound)),
+            _ => self,
+        }
+    }
+
     pub fn quantity_kind(&self) -> QuantityKind {
         match self {
             Quantity::Length(_) => QuantityKind::Length,
             Quantity::Time(_) => QuantityKind::Time,
-            Quantity::Mass(_, compound) => match compound {
-                Some(compound) => QuantityKind::Compound(compound.clone()),
-                None => QuantityKind::Mass,
-            },
-            Quantity::Amount(_, compound) => match compound {
-                Some(compound) => QuantityKind::Compound(compound.clone()),
-                None => QuantityKind::Amount,
-            },
+            Quantity::Mass(_, _) => QuantityKind::Mass,
+            Quantity::Amount(_, _) => QuantityKind::Amount,
             Quantity::Angle(_) => QuantityKind::Angle,
         }
     }
 
-    pub fn shorthand(&self) -> &'static str {
+    pub fn shorthand(&self) -> String {
         match self {
-            Quantity::Length(length) => length.shorthand(),
-            Quantity::Time(time) => time.shorthand(),
-            Quantity::Mass(mass, _) => mass.shorthand(),
-            Quantity::Amount(amount, _) => amount.shorthand(),
-            Quantity::Angle(angle) => angle.shorthand(),
+            Quantity::Length(length) => length.shorthand().to_string(),
+            Quantity::Time(time) => time.shorthand().to_string(),
+            Quantity::Mass(mass, compound) => {
+                if let Some(compound) = compound {
+                    mass.shorthand().to_string() + " " + &*compound.to_string()
+                } else {
+                    mass.shorthand().to_string()
+                }
+            },
+            Quantity::Amount(amount, compound) => {
+                if let Some(compound) = compound {
+                    amount.shorthand().to_string() + " " + &*compound.to_string()
+                } else {
+                    amount.shorthand().to_string()
+                }
+            },
+            Quantity::Angle(angle) => angle.shorthand().to_string(),
         }
     }
 
@@ -176,7 +189,7 @@ impl Dimension {
         Dimension(new_dimension)
     }
 
-    pub(crate) fn sanity_check(&self) -> bool {
+    pub fn sanity_check(&self) -> bool {
         // check that all quantities of same kind have the same unit
         let mut quantities: BTreeMap<QuantityKind, Quantity> = BTreeMap::new();
 
@@ -246,6 +259,8 @@ impl Dimension {
             let mut found = false;
             for (other_quantity, other_power) in other.0.iter() {
                 if quantity.quantity_kind() == other_quantity.quantity_kind() {
+                    dbg!(quantity, other_quantity);
+
                     if *power != *other_power {
                         return None;
                     }
@@ -259,7 +274,63 @@ impl Dimension {
                 }
             }
             if !found {
-                return None;
+                // Try to convert chemical to mass or amount
+                if let Quantity::Mass(mass, Some(chemical)) = quantity {
+                    for (other_quantity, other_power) in other.0.iter() {
+                        if let Quantity::Amount(amount, other_chemical) = other_quantity {
+                            if let Some(other_chemical) = other_chemical {
+                                if other_chemical != chemical {
+                                    continue;
+                                }
+                            }
+
+                            if *power != Float::from(1.) && *other_power != Float::from(1.) {
+                                continue;
+                            }
+
+                            // Convert amount to moles and mass to grams
+                            let amount_ratio = &Amount::Mole.ratio() / &amount.ratio();
+                            let mass_ratio = &Mass::Gram.ratio() / &mass.ratio();
+
+                            let mut quantity_ratio =  &mass_ratio / &amount_ratio;
+
+                            // Divide by particulate mass
+                            quantity_ratio = &quantity_ratio * &Float::parse(&*chemical.particulate_mass().to_string()).unwrap();
+
+                            ratio = &ratio * &quantity_ratio;
+                            found = true;
+                        }
+                    }
+                } else if let Quantity::Amount(amount, Some(chemical)) = quantity {
+                    for (other_quantity, other_power) in other.0.iter() {
+                        if let Quantity::Mass(mass, other_chemical) = other_quantity {
+                            if let Some(other_chemical) = other_chemical {
+                                if other_chemical != chemical {
+                                    continue;
+                                }
+                            }
+
+                            if *power != Float::from(1.) && *other_power != Float::from(1.) {
+                                continue;
+                            }
+
+                            // Convert amount to moles and mass to grams
+                            let amount_ratio = &Amount::Mole.ratio() / &amount.ratio();
+                            let mass_ratio = &Mass::Gram.ratio() / &mass.ratio();
+
+                            let mut quantity_ratio = &amount_ratio / &mass_ratio;
+
+                            // Multiply by particulate mass
+                            quantity_ratio = &quantity_ratio / &Float::parse(&*chemical.particulate_mass().to_string()).unwrap();
+
+                            ratio = &ratio * &quantity_ratio;
+                            found = true;
+                        }
+                    }
+                }
+                if !found {
+                    return None;
+                }
             }
         }
 

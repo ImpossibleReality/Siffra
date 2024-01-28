@@ -1,12 +1,16 @@
 use crate::representations::Element;
 use std::collections::BTreeMap;
 use std::fmt::Display;
+use crate::representations::dimension::chemical::parse::parse_compound;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct Compound(pub BTreeMap<Element, u16>);
 
 impl Compound {
-    pub fn atomic_mass(&self) -> f32 {
+    pub fn parse(formula: &str) -> Option<Self> {
+        parse_compound(formula)
+    }
+    pub fn particulate_mass(&self) -> f32 {
         self.0
             .iter()
             .map(|(element, count)| element.atomic_mass() * *count as f32)

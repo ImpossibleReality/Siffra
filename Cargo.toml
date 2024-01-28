@@ -5,6 +5,13 @@ members = [
     "desktop/src-tauri",
 ]
 
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true
+
 [workspace.package]
 version = "0.1.0"
 edition = "2021"

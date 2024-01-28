@@ -16,6 +16,26 @@
   }[] = [];
 
   async function update_line_size(){
+      // Get current cursor position
+        const selection = window.getSelection();
+      // Remove elements with style properties
+        inputEl!.querySelectorAll("[style]").forEach(el => {
+            el.removeAttribute("style");
+        })
+      // Remove any elements that are not divs/breaks
+        inputEl!.querySelectorAll(":not(div, br)").forEach(el => {
+            el.parentNode!.replaceChild(document.createTextNode(el.innerText), el);
+        })
+
+      // Restore cursor position
+        if (selection) {
+            const range = document.createRange();
+            range.setStart(selection.anchorNode!, selection.anchorOffset);
+            range.setEnd(selection.focusNode!, selection.focusOffset);
+            selection.removeAllRanges();
+            selection.addRange(range);
+        }
+
     // split by newlines and create a div for each line
     let lines = inputEl!.innerText.trim().split("\n");
     let html = "";
