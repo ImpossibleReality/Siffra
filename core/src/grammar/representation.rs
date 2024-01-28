@@ -126,7 +126,6 @@ impl TryFrom<ParsedExpr> for Expression {
             }
             ParsedExpr::Variable { name } => Ok(Expression::Variable(name)),
             ParsedExpr::FunctionCall { name, args, base } => {
-                dbg!(&args);
                 let mut expressions = Vec::with_capacity(args.len() + 1);
 
                 if let Some(base) = base {

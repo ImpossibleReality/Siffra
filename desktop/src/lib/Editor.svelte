@@ -3,6 +3,7 @@
   import { invoke } from "@tauri-apps/api";
 
   let inputEl: HTMLElement | null;
+  let displayedEl: HTMLElement | null;
   let linesEl: HTMLElement | null;
   let borderEl: HTMLElement | null;
   let outputEl: HTMLElement | null;
@@ -14,6 +15,66 @@
     output: string;
   }[] = [];
 
+  const operation_regex =
+    /(=|\+|plus|-|minus|times|of|\/|over|divided by|divide by|by|\*|\^)/dg;
+  const number_regex = /(\d+(?:\.\d+)?(?:E\d+)?)/dg;
+
+  function escapeHTML(unsafe: String): String {
+    return unsafe
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;")
+      .replace("\n", "<br>");
+  }
+
+  function highlight_matches(
+    node: HTMLElement,
+    class_map: Map<string, RegExp>,
+  ) {
+    const match_pairs: [string, [number, number]][] = [];
+    for (const [class_name, regex] of class_map) {
+      const matches = node.innerText.matchAll(regex);
+      for (const match of matches) {
+        match_pairs.push([
+          class_name,
+          [match.index!, match.index! + match[0].length],
+        ]);
+      }
+    }
+
+    // Sort matches by start index
+    match_pairs.sort((a, b) => a[1][0] - b[1][0]);
+
+    // Create a new string with the matches highlighted
+    let new_string = "";
+    let last_index = 0;
+    for (const match of match_pairs) {
+      new_string += escapeHTML(node.innerText.slice(last_index, match[1][0]));
+      new_string += `<span class="${match[0]}">${escapeHTML(
+        node.innerText.slice(match[1][0], match[1][1]),
+      )}</span>`;
+      last_index = match[1][1];
+    }
+
+    // Add the rest of the string
+    new_string += escapeHTML(node.innerText.slice(last_index));
+
+    // Set the innerHTML of the node
+    node.innerHTML = new_string;
+  }
+
+  async function update_syntax_highlighting() {
+    highlight_matches(
+      displayedEl!,
+      new Map([
+        ["number", number_regex],
+        ["operation", operation_regex],
+      ]),
+    );
+  }
+
   async function update_line_size() {
     // Get current cursor position
     const selection = window.getSelection();
@@ -23,7 +84,10 @@
     });
     // Remove any elements that are not divs/breaks
     inputEl!.querySelectorAll(":not(div, br)").forEach((el) => {
-      el.parentNode!.replaceChild(document.createTextNode(el.innerText), el);
+      el.parentNode!.replaceChild(
+        document.createTextNode((el as HTMLElement).innerText),
+        el,
+      );
     });
 
     // Restore cursor position
@@ -34,6 +98,8 @@
       selection.removeAllRanges();
       selection.addRange(range);
     }
+
+    displayedEl!.innerText = inputEl!.innerText;
 
     // split by newlines and create a div for each line
     let lines = inputEl!.innerText.trim().split("\n");
@@ -70,9 +136,11 @@
           lineEl.classList.remove("wrapped");
         }
         i++;
-        console.log(lineData);
       }
     }, 0);
+
+    // Update syntax highlighting
+    await update_syntax_highlighting();
   }
 
   async function update_result() {
@@ -128,6 +196,7 @@
         on:input={update_line_size}
         on:input={update_result}
       ></div>
+      <div bind:this={displayedEl} class="displayed-el"></div>
       <div bind:this={linesEl} class="lines-el"></div>
     </div>
   </div>
@@ -170,6 +239,7 @@
     overflow-x: hidden;
   }
   .input-el,
+  .displayed-el,
   .lines-el {
     outline: none;
     font-size: 1rem;
@@ -179,14 +249,15 @@
   .input-el {
     width: 100%;
     min-height: calc(100vh - var(--nav-height) - 2rem);
+    color: transparent;
   }
   .input-el:empty::after {
     content: "Enter your calculations...";
     color: #4b5263;
   }
-  .lines-el {
+  .lines-el,
+  .displayed-el {
     user-select: none;
-    visibility: hidden;
     position: absolute;
     top: 0;
     left: 0;
@@ -194,6 +265,17 @@
     bottom: 0;
     overflow-x: hidden;
     pointer-events: none;
+    overflow-wrap: anywhere;
+  }
+
+  .displayed-el :global(.number) {
+    color: #dec4ab;
+  }
+  .displayed-el :global(.operation) {
+    color: #90bee3;
+  }
+  .lines-el {
+    visibility: hidden;
   }
   .lines-el :global(.line) {
     overflow-x: hidden;

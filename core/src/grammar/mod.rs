@@ -334,7 +334,6 @@ mod tests {
     #[test]
     fn test_nested_functions() {
         let expr = parse_expr(SiffraParser::parse(Rule::expr, "sin(cos(5))").unwrap());
-        dbg!(&expr);
         assert_eq!(
             ParsedExpr::FunctionCall {
                 name: "sin".to_string(),

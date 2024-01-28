@@ -4,6 +4,7 @@ mod chemical;
 mod length;
 mod macros;
 mod mass;
+mod temperature;
 mod time;
 
 use crate::representations::Float;
@@ -18,6 +19,7 @@ pub use {
     chemical::{Compound, Element},
     length::Length,
     mass::Mass,
+    temperature::Temperature,
     time::Time,
 };
 
@@ -28,6 +30,7 @@ pub enum QuantityKind {
     Mass,
     Amount,
     Angle,
+    Temperature,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -37,6 +40,7 @@ pub enum Quantity {
     Mass(mass::Mass, Option<Compound>),
     Amount(amount::Amount, Option<Compound>),
     Angle(angle::Angle),
+    Temperature(temperature::Temperature),
 }
 
 impl FromStr for Quantity {
@@ -83,6 +87,7 @@ impl Quantity {
             Quantity::Mass(_, _) => QuantityKind::Mass,
             Quantity::Amount(_, _) => QuantityKind::Amount,
             Quantity::Angle(_) => QuantityKind::Angle,
+            Quantity::Temperature(_) => QuantityKind::Temperature,
         }
     }
 
@@ -105,6 +110,7 @@ impl Quantity {
                 }
             }
             Quantity::Angle(angle) => angle.shorthand().to_string(),
+            Quantity::Temperature(temperature) => temperature.shorthand().to_string(),
         }
     }
 
@@ -115,6 +121,7 @@ impl Quantity {
             Quantity::Mass(mass, _) => mass.ratio(),
             Quantity::Amount(amount, _) => amount.ratio(),
             Quantity::Angle(angle) => angle.ratio(),
+            Quantity::Temperature(temperature) => temperature.ratio(),
         }
     }
 }
@@ -259,8 +266,6 @@ impl Dimension {
             let mut found = false;
             for (other_quantity, other_power) in other.0.iter() {
                 if quantity.quantity_kind() == other_quantity.quantity_kind() {
-                    dbg!(quantity, other_quantity);
-
                     if *power != *other_power {
                         return None;
                     }

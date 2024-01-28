@@ -60,9 +60,9 @@ convert_expr = @{ ("in" | "as" | "to" | "into") ~ " " ~ units_expr }
 units_expr_numerator = ${((#numerator = unit_mul_group) | "1") | "(" ~ units_expr_numerator ~ ")"}
 units_expr_denomimator = ${((#denominator = unit_mul_group) | "1") | "(" ~ units_expr_numerator ~ ")"}
 
-units_expr_inner = _{!bin_op ~ !convert_expr ~ ungrouped_unit_atom | (units_expr_numerator ~ "/" ~ units_expr_denomimator | units_expr_numerator)}
+units_expr_inner = _{ !convert_expr ~ ungrouped_unit_atom | (units_expr_numerator ~ "/" ~ units_expr_denomimator | units_expr_numerator)}
 
-units_expr = ${"(" ~ units_expr_inner ~ ")" ~ !"/" | units_expr_inner}
+units_expr = ${ !bin_op ~ ("(" ~ units_expr_inner ~ ")" ~ !"/" | units_expr_inner)}
 
 dimensional_number = ${ number ~ " " ~ units_expr }
 
@@ -93,9 +93,9 @@ atom = _{ grouped_mul_atom | dimensional_number | ungrouped_function | grouped_a
     ungrouped_function = ${#name = ident ~ " " ~ !convert_op ~ #input = atom}
 
 bin_op = _{ add | subtract | multiply | divide | exponent }
-    add = { "+" | " plus " }
+    add = { "+" | "plus" }
 	subtract = { "-" | "minus" }
-	multiply = { "*" | "of " | "times" }
+	multiply = { "*" | "of" | "times" }
     exponent = { "^" }
 	divide = { "/" | "over" | "divided by" | "divide by" | "by"}
 

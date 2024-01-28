@@ -35,24 +35,24 @@ note: Siffra currently only *officially* supports macOS due to testing limitatio
 ## Planned Features
 - [x] Basic calculator functionality
 - [x] Basic natural language support
+- [x] Syntax highlighting
 - [x] Variables support
 - [x] Dimensional analysis
 - [x] Unit conversion
   - [x] Basic units
   - [x] Dimensions w/ multiple units + exponents (ie. m/s^2)
-  - [ ] Electrical units
   - [ ] Derived units (ie. Jules, Newtons, etc.)
+  - [ ] Absolute units (ie. Temperature, time/date, etc.)
+  - [x] Stoichiometry
+  - [ ] Full support for all SI units (including derived)
   - [ ] Currency/Stock units
-  - [ ] Stoichiometry
 - [ ] Improved syntax + error handling
-- [ ] Syntax highlighting
 - [ ] Support for saving calculations + multi-window support
 - [ ] Custom defined functions
 - [ ] Preferences page
 - [ ] Plugin + theme system
 - [ ] CAS support
 - [ ] Graphing
-- [ ] Improved natural language support (AI?)
 
 ## Contributing
 
