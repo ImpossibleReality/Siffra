@@ -226,7 +226,7 @@
           class="ruler"
           style="margin-left: {line.startPadding +
             10}px; margin-right: {line.endPadding + 5}px;"
-          class:active={!!line.output && window.innerWidth > 500}
+          class:active={!!line.output && window.innerWidth > 700}
         ></span>
       </div>
     {/each}
@@ -359,7 +359,9 @@
   }
   .output-container {
     padding: 1rem;
-    overflow-y: scroll;
+    overflow-y: auto;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
     min-width: 6rem;
     width: 40%;
     max-width: calc(100% - 8rem);
