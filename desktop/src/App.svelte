@@ -17,7 +17,6 @@
 
 <style>
   main {
-    padding-top: var(--nav-height);
     box-sizing: border-box;
     height: 100vh;
     overflow-y: scroll;

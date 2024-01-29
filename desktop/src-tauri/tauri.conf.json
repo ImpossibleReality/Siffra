@@ -20,6 +20,9 @@
         "show": true,
         "startDragging": true,
         "setAlwaysOnTop": true
+      },
+      "os": {
+        "all": true
       }
     },
     "bundle": {
