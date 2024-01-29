@@ -1,8 +1,3 @@
-<div align="center">
-    <img src="desktop/src-tauri/app-icon.png" alt="Siffra logo" width="196" height="196">
-</div>
-
-
 # Siffra
 
 Siffra is a beautiful, lightweight, fast, and accurate calculator with support for dimensional analysis.
