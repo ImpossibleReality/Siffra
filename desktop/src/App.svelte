@@ -1,6 +1,12 @@
 <script lang="ts">
   import Editor from "./lib/Editor.svelte";
   import Titlebar from "./lib/Titlebar.svelte";
+  import { onMount } from "svelte";
+  import { appWindow } from "@tauri-apps/api/window";
+
+  onMount(() => {
+    appWindow.show();
+  });
 </script>
 
 <Titlebar />

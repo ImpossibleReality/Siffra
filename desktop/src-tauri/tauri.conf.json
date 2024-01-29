@@ -17,6 +17,7 @@
         "open": true
       },
       "window": {
+        "show": true,
         "startDragging": true,
         "setAlwaysOnTop": true
       }
@@ -47,7 +48,8 @@
         "minHeight": 130,
         "titleBarStyle": "Overlay",
         "theme": "Dark",
-        "hiddenTitle": true
+        "hiddenTitle": true,
+        "visible": false
       }
     ],
     "updater": {

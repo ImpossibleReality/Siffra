@@ -14,11 +14,13 @@
     "Segoe UI Emoji",
     "Segoe UI Symbol",
     "Noto Color Emoji";
-  font-size: 16px;
+  font-size: 15px;
   line-height: 24px;
-  font-weight: 400;
+  font-weight: 600;
 
   color: #cdd4d7;
+
+  caret-color: #dce2e5;
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -39,4 +41,8 @@ body {
 
 * {
   box-sizing: border-box;
+}
+
+*::selection {
+  background-color: #aeb4b7;
 }

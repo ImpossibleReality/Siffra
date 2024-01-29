@@ -312,6 +312,7 @@ mod tests {
     #[test]
     fn test_parse_expr() {
         let _expr = parse_expr(SiffraParser::parse(Rule::expr, "log2(5(x)(y)) as mol %").unwrap());
+        let _expr = parse_expr(SiffraParser::parse(Rule::expr, "a times 2% of 3").unwrap());
     }
 
     #[test]

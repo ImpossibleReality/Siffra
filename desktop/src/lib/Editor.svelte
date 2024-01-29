@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { afterUpdate, onMount, tick } from "svelte";
   import { invoke } from "@tauri-apps/api";
 
   let inputEl: HTMLElement | null;
@@ -7,17 +7,22 @@
   let linesEl: HTMLElement | null;
   let borderEl: HTMLElement | null;
   let outputEl: HTMLElement | null;
+  let editorWrapperEl: HTMLElement | null;
+  let rulerWrapperEl: HTMLElement | null;
 
   let showBorder = false;
 
   let lineData: {
     height: number;
     output: string;
+    startPadding: number;
+    endPadding: number;
   }[] = [];
 
   const operation_regex =
     /(=|\+|plus|-|minus|times|of|\/|over|divided by|divide by|by|\*|\^)/dg;
   const number_regex = /(\d+(?:\.\d+)?(?:E\d+)?)/dg;
+  const comment_regex = /(\/\/.*|\/\*.*\*\/)/dg;
 
   function escapeHTML(unsafe: String): String {
     return unsafe
@@ -26,7 +31,7 @@
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#039;")
-      .replace("\n", "<br>");
+      .replace(/\n/g, "<br />");
   }
 
   function highlight_matches(
@@ -47,6 +52,16 @@
     // Sort matches by start index
     match_pairs.sort((a, b) => a[1][0] - b[1][0]);
 
+    // Remove any matches that overlap. Give preference to the first class in the map
+    let i = 0;
+    while (i < match_pairs.length - 1) {
+      if (match_pairs[i][1][1] > match_pairs[i + 1][1][0]) {
+        match_pairs.splice(i + 1, 1);
+      } else {
+        i++;
+      }
+    }
+
     // Create a new string with the matches highlighted
     let new_string = "";
     let last_index = 0;
@@ -65,17 +80,8 @@
     node.innerHTML = new_string;
   }
 
-  async function update_syntax_highlighting() {
-    highlight_matches(
-      displayedEl!,
-      new Map([
-        ["number", number_regex],
-        ["operation", operation_regex],
-      ]),
-    );
-  }
-
-  async function update_line_size() {
+  function update_input() {
+    update_result();
     // Get current cursor position
     const selection = window.getSelection();
     // Remove elements with style properties
@@ -90,6 +96,8 @@
       );
     });
 
+    displayedEl!.innerText = inputEl!.innerText;
+
     // Restore cursor position
     if (selection) {
       const range = document.createRange();
@@ -99,8 +107,6 @@
       selection.addRange(range);
     }
 
-    displayedEl!.innerText = inputEl!.innerText;
-
     // split by newlines and create a div for each line
     let lines = inputEl!.innerText.trim().split("\n");
     let html = "";
@@ -108,10 +114,32 @@
       if (line.trim() === "") {
         html += `<div class="line">&nbsp;</div>`;
       } else {
-        html += `<div class="line">${line}</div>`;
+        html += `<div class="line"><span class="line-inner">${line}</span></div>`;
       }
     }
     linesEl!.innerHTML = html;
+
+    update_line_size();
+
+    highlight_matches(
+      displayedEl!,
+      new Map([
+        ["comment", comment_regex],
+        ["number", number_regex],
+        ["operation", operation_regex],
+      ]),
+    );
+  }
+
+  function update_line_size() {
+    // Increase the font size in increments of 1 px as editor gets bigger
+    const fontSize = Math.max(
+      Math.min(1.1, 0.9 + (window.innerWidth - 300) / 800),
+      0.9,
+    ).toFixed(1);
+
+    editorWrapperEl!.style.setProperty("--font-size", `${fontSize}rem`);
+
     const { lineHeight } = getComputedStyle(linesEl!);
     setTimeout(() => {
       let lineEls = linesEl!.querySelectorAll(".line");
@@ -126,9 +154,13 @@
           lineData[i] = {
             height: 0,
             output: "",
+            startPadding: 0,
+            endPadding: 0,
           };
         }
         lineData[i].height = lineEl.getBoundingClientRect().height;
+        lineData[i].startPadding =
+          lineEl.children[0].getBoundingClientRect().width;
         if (lineData[i].height > parseInt(lineHeight.split("px")[0])) {
           showBorder = true;
           lineEl.classList.add("wrapped");
@@ -138,9 +170,6 @@
         i++;
       }
     }, 0);
-
-    // Update syntax highlighting
-    await update_syntax_highlighting();
   }
 
   async function update_result() {
@@ -158,6 +187,11 @@
     for (const output of data) {
       lineData[output.line].output = output.output;
     }
+    await tick();
+    for (const el of outputEl!.querySelectorAll(".output")) {
+      lineData[parseInt(el.dataset.line!)].endPadding =
+        el.getBoundingClientRect().width;
+    }
   }
 
   onMount(() => {
@@ -168,6 +202,7 @@
       const onMouseMove = (e: MouseEvent) => {
         let newPercent = 1 - e.clientX / window.innerWidth;
         outputEl!.style.width = `${newPercent * 100}%`;
+        update_line_size();
       };
       const onMouseUp = () => {
         window.removeEventListener("mousemove", onMouseMove);
@@ -182,7 +217,19 @@
   });
 </script>
 
-<div class="editor-wrapper">
+<div class="editor-wrapper" bind:this={editorWrapperEl}>
+  <div class="ruler-wrapper" bind:this={rulerWrapperEl}>
+    {#each lineData as line, i}
+      <div style="height: {line.height}px" class="ruler-line">
+        <span
+          class="ruler"
+          style="margin-left: {line.startPadding +
+            10}px; margin-right: {line.endPadding + 5}px;"
+          class:active={!!line.output && window.innerWidth > 500}
+        ></span>
+      </div>
+    {/each}
+  </div>
   <div class="input-wrapper">
     <div class="anchor-el">
       <div
@@ -193,8 +240,7 @@
         autocapitalize="off"
         spellcheck="false"
         bind:this={inputEl}
-        on:input={update_line_size}
-        on:input={update_result}
+        on:input={update_input}
       ></div>
       <div bind:this={displayedEl} class="displayed-el"></div>
       <div bind:this={linesEl} class="lines-el"></div>
@@ -211,7 +257,7 @@
         <span
           class="output"
           on:click={(e) => navigator.clipboard.writeText(e.target.innerText)}
-          >{line.output}</span
+          data-line={i}>{line.output}</span
         >
       </div>
     {/each}
@@ -220,6 +266,7 @@
 
 <style>
   .editor-wrapper {
+    position: relative;
     width: 100%;
     overflow-x: hidden;
     font-size: 1rem;
@@ -228,6 +275,31 @@
     flex-direction: row;
     min-height: calc(100vh - var(--nav-height));
   }
+  .ruler-wrapper {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 1rem;
+  }
+  .ruler-line {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-end;
+  }
+
+  .ruler {
+    height: 2px;
+    width: 100%;
+    transition: background-color 0.1s ease-in-out;
+  }
+
+  .ruler.active {
+    background-color: rgba(255, 255, 255, 0.03);
+  }
+
   .input-wrapper {
     padding: 1rem;
     flex-grow: 1;
@@ -242,7 +314,7 @@
   .displayed-el,
   .lines-el {
     outline: none;
-    font-size: 1rem;
+    font-size: var(--font-size);
     line-height: 1.8;
     font-family: "Roboto Mono", monospace;
   }
@@ -274,8 +346,11 @@
   .displayed-el :global(.operation) {
     color: #90bee3;
   }
+  .displayed-el :global(.comment) {
+    color: #727b8c;
+  }
   .lines-el {
-    visibility: hidden;
+    color: transparent;
   }
   .lines-el :global(.line) {
     overflow-x: hidden;
@@ -298,8 +373,10 @@
     justify-content: flex-end;
   }
   .output {
+    position: relative;
     padding: 0 0.5rem;
     display: inline-block;
+    font-size: var(--font-size);
     border-radius: 0.3rem;
     color: #98c379;
     user-select: none;
@@ -314,7 +391,7 @@
   .output:hover {
     background-color: #98c379;
     color: #282c34;
-    font-weight: bold;
+    font-weight: bolder;
   }
 
   .output:active {
