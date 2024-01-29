@@ -159,14 +159,15 @@
           };
         }
         lineData[i].height = lineEl.getBoundingClientRect().height;
-        lineData[i].startPadding =
-          lineEl.children[0].getBoundingClientRect().width;
         if (lineData[i].height > parseInt(lineHeight.split("px")[0])) {
           showBorder = true;
           lineEl.classList.add("wrapped");
         } else {
           lineEl.classList.remove("wrapped");
         }
+        lineData[i].startPadding = lineEl.children[0]
+          ? lineEl.children[0].getBoundingClientRect().width
+          : 0;
         i++;
       }
     }, 0);

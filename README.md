@@ -9,7 +9,7 @@ Siffra is a beautiful, lightweight, fast, and accurate calculator with support f
 The project is currently in heavy development, and is not currently stable yet. However, it is usable.
 
 <div align="center">
-    <img src="screenshot.png" alt="Siffra screenshot">
+    <img src="screenshot.png" alt="Siffra screenshot" style="border-radius: 0.8rem">
 </div>
 
 ## Installation
