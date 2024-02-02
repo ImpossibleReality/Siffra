@@ -1,6 +1,6 @@
 <script lang="ts">
   import { afterUpdate, onMount, tick } from "svelte";
-  import { invoke } from "@tauri-apps/api";
+  import { invoke, os } from "@tauri-apps/api";
 
   let inputEl: HTMLElement | null;
   let displayedEl: HTMLElement | null;
@@ -10,6 +10,7 @@
   let editorWrapperEl: HTMLElement | null;
   let rulerWrapperEl: HTMLElement | null;
 
+  let platform: string = "darwin";
   let showBorder = false;
 
   let lineData: {
@@ -196,6 +197,10 @@
   }
 
   onMount(() => {
+    os.platform().then(p => {
+      platform = p;
+    });
+
     update_line_size();
     window.addEventListener("resize", update_line_size);
     borderEl!.addEventListener("mousedown", (e) => {
@@ -235,6 +240,7 @@
     <div class="anchor-el">
       <div
         class="input-el"
+        class:win32={platform == "win32"}
         contenteditable="true"
         autocomplete="off"
         autocorrect="off"
@@ -327,6 +333,9 @@
   .input-el:empty::after {
     content: "Enter your calculations...";
     color: #4b5263;
+  }
+.input-el.win32 {
+    display:inline-block;
   }
   .lines-el,
   .displayed-el {
