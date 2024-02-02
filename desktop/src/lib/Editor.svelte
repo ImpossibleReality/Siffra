@@ -97,7 +97,11 @@
       );
     });
 
-    displayedEl!.innerText = inputEl!.innerText;
+    // Shows "Enter your colculations..." when all elements are cleared
+    displayedEl!.innerText = inputEl!.innerText.trim();
+    if (inputEl!.innerHTML == "<br>" && !displayedEl!.innerText.length) {
+      inputEl!.innerText = "";
+    }
 
     // Restore cursor position
     if (selection) {
