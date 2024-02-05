@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { afterUpdate, onMount, tick } from "svelte";
+  import { onMount, tick } from "svelte";
   import { invoke, os } from "@tauri-apps/api";
+  import Result from "./Result.svelte";
 
   let inputEl: HTMLElement | null;
   let displayedEl: HTMLElement | null;
@@ -15,7 +16,14 @@
 
   let lineData: {
     height: number;
-    output: string;
+    output: {
+      isErr: boolean;
+      value?: string;
+      error_message?: string;
+      error_description?: string;
+      error_span?: [number, number];
+      error_location?: string;
+    };
     startPadding: number;
     endPadding: number;
   }[] = [];
@@ -97,9 +105,9 @@
       );
     });
 
-    // Shows "Enter your colculations..." when all elements are cleared
-    displayedEl!.innerText = inputEl!.innerText.trim();
-    if (inputEl!.innerHTML == "<br>" && !displayedEl!.innerText.length) {
+    // Shows "Enter your calculation..." when all elements are cleared
+    displayedEl!.innerText = inputEl!.innerText;
+    if (inputEl!.innerText.trim() === "") {
       inputEl!.innerText = "";
     }
 
@@ -113,7 +121,7 @@
     }
 
     // split by newlines and create a div for each line
-    let lines = inputEl!.innerText.trim().split("\n");
+    let lines = inputEl!.innerText.split("\n");
     let html = "";
     for (let line of lines) {
       if (line.trim() === "") {
@@ -158,7 +166,10 @@
         if (typeof lineData[i] === "undefined") {
           lineData[i] = {
             height: 0,
-            output: "",
+            output: {
+              isErr: false,
+              value: "",
+            },
             startPadding: 0,
             endPadding: 0,
           };
@@ -179,20 +190,48 @@
   }
 
   async function update_result() {
-    const input = inputEl!.innerText.trim();
+    const input = inputEl!.innerText;
     const data: {
       line: number;
-      output: string;
+      output: {
+        Value: {
+          string: string;
+        };
+        Error: {
+          message: string;
+          description: string;
+          span: [number, number];
+          location?: string;
+        };
+      };
     }[] = await invoke("get_result", {
       input,
     });
     lineData = lineData.map((line) => {
-      line.output = "";
+      line.output = {
+        isErr: false,
+        value: "",
+      };
       return line;
     });
     for (const output of data) {
-      lineData[output.line].output = output.output;
+      if (output.output.Value) {
+        lineData[output.line].output = {
+          isErr: false,
+          value: output.output.Value.string || "",
+        };
+      } else if (output.output.Error) {
+        console.log("error", output.output.Error);
+        lineData[output.line].output = {
+          isErr: true,
+          error_message: output.output.Error.message,
+          error_description: output.output.Error.description,
+          error_span: output.output.Error.span,
+          error_location: output.output.Error.location,
+        };
+      }
     }
+
     await tick();
     for (const el of outputEl!.querySelectorAll(".output")) {
       lineData[parseInt(el.dataset.line!)].endPadding =
@@ -235,7 +274,8 @@
           class="ruler"
           style="margin-left: {line.startPadding +
             10}px; margin-right: {line.endPadding + 5}px;"
-          class:active={!!line.output && window.innerWidth > 700}
+          class:active={(!!line.output.value || line.output.isErr) &&
+            window.innerWidth > 700}
         ></span>
       </div>
     {/each}
@@ -265,11 +305,7 @@
   <div class="output-container" bind:this={outputEl}>
     {#each lineData as line, i}
       <div style="height: {line.height}px" class="output-line">
-        <span
-          class="output"
-          on:click={(e) => navigator.clipboard.writeText(e.target.innerText)}
-          data-line={i}>{line.output}</span
-        >
+        <Result data-line={i} output={line.output} />
       </div>
     {/each}
   </div>
@@ -387,33 +423,6 @@
     flex-direction: row;
     align-items: center;
     justify-content: flex-end;
-  }
-  .output {
-    position: relative;
-    padding: 0 0.5rem;
-    display: inline-block;
-    font-size: var(--font-size);
-    border-radius: 0.3rem;
-    color: #98c379;
-    user-select: none;
-    -webkit-user-select: none;
-    cursor: default;
-    transition:
-      background-color 0.2s ease-in-out,
-      color 0.2s ease-in-out,
-      font-weight 0.2s ease-in-out;
-  }
-
-  .output:hover {
-    background-color: #98c379;
-    color: #282c34;
-    font-weight: bolder;
-  }
-
-  .output:active {
-    background-color: #719657;
-    color: #282c34;
-    font-weight: bold;
   }
 
   .border-anchor {

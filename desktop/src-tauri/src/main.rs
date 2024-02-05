@@ -6,9 +6,22 @@ use siffra::evaluation::{evaluate_line, SiffraState};
 use siffra::representations::Value;
 
 #[derive(Serialize, Deserialize)]
+enum SiffraOutput {
+    Value {
+        string: String,
+    },
+    Error {
+        span: Option<(usize, usize)>,
+        message: String,
+        description: Option<String>,
+        location: Option<String>,
+    }
+}
+
+#[derive(Serialize, Deserialize)]
 struct SiffraLineOutput {
     line: u16,
-    output: String,
+    output: SiffraOutput,
 }
 
 fn display_value(val: Value) -> String {
@@ -38,14 +51,27 @@ fn get_result(input: &str) -> Vec<SiffraLineOutput> {
             Ok(Some(value)) => {
                 output.push(SiffraLineOutput {
                     line: i as u16,
-                    output: display_value(value),
+                    output: SiffraOutput::Value {
+                        string: display_value(value)
+                    },
                 });
             }
             Ok(None) => {}
-            Err(_) => {
+            Err(err) => {
+                #[cfg(debug_assertions)]
+                let location = err.location();
+
+                #[cfg(not(debug_assertions))]
+                let location = None;
+
                 output.push(SiffraLineOutput {
                     line: i as u16,
-                    output: "Error".to_string(),
+                    output: SiffraOutput::Error {
+                        message: err.message(),
+                        description: err.description(),
+                        span: err.span(),
+                        location,
+                    },
                 });
             }
         }

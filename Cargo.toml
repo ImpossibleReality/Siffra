@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "core",
     "desktop/src-tauri",
+    "core/fuzz",
 ]
 
 [profile.release]

@@ -1,6 +1,9 @@
+use crate::error::SiffraExecutionError;
+use crate::grammar::Span;
 use crate::representations::Compound;
 use crate::representations::{Dimension, Quantity};
 use crate::representations::{Expression, Float, Value};
+use crate::siffra_try;
 use std::str::FromStr;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -12,14 +15,16 @@ pub enum ParsedLine {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParsedUnit {
-    pub(crate) name: String,
-    pub(crate) chemical: Option<String>,
+    pub name: String,
+    pub chemical: Option<String>,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParsedDimension {
-    pub(crate) numerator: Vec<(ParsedUnit, i32)>,
-    pub(crate) denominator: Vec<(ParsedUnit, i32)>,
+    pub numerator: Vec<(ParsedUnit, i32)>,
+    pub denominator: Vec<(ParsedUnit, i32)>,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -27,27 +32,33 @@ pub enum ParsedExpr {
     Number {
         value: String,
         units: Option<ParsedDimension>,
+        span: Span,
     },
     Variable {
         name: String,
+        span: Span,
     },
     FunctionCall {
         name: String,
         args: Vec<ParsedExpr>,
         base: Option<Box<ParsedExpr>>,
+        span: Span,
     },
     UnOpPre {
         op: OpPre,
         rhs: Box<ParsedExpr>,
+        span: Span,
     },
     UnOpPost {
         lhs: Box<ParsedExpr>,
         op: OpPost,
+        span: Span,
     },
     BinOp {
         lhs: Box<ParsedExpr>,
         op: Op,
         rhs: Box<ParsedExpr>,
+        span: Span,
     },
 }
 
@@ -73,21 +84,40 @@ pub enum Op {
 }
 
 impl TryFrom<ParsedDimension> for Dimension {
-    type Error = ();
+    type Error = SiffraExecutionError;
 
-    fn try_from(dimension: ParsedDimension) -> Result<Self, ()> {
+    fn try_from(dimension: ParsedDimension) -> Result<Self, SiffraExecutionError> {
         let mut quantities = Vec::new();
 
         for (unit, power) in dimension.numerator {
             if !(unit.name == "unitless" || unit.name == "number") {
                 if let Some(chemical) = unit.chemical {
-                    let compound = Compound::parse(chemical.as_str()).ok_or(())?;
+                    let compound = siffra_try!(
+                        Compound::parse(chemical.as_str()).ok_or(()),
+                        "Syntax Error",
+                        "Error parsing compound",
+                        Some(unit.span)
+                    );
                     quantities.push((
-                        Quantity::from_str(unit.name.as_str())?.with_chemical(compound),
+                        siffra_try!(
+                            Quantity::from_str(unit.name.as_str()),
+                            "Syntax Error",
+                            "Error parsing quantity",
+                            Some(unit.span)
+                        )
+                        .with_chemical(compound),
                         Float::from(power),
                     ));
                 } else {
-                    quantities.push((Quantity::from_str(unit.name.as_str())?, Float::from(power)));
+                    quantities.push((
+                        siffra_try!(
+                            Quantity::from_str(unit.name.as_str()),
+                            "Syntax Error",
+                            "Error parsing quantity",
+                            Some(unit.span)
+                        ),
+                        Float::from(power),
+                    ));
                 }
             }
         }
@@ -95,13 +125,32 @@ impl TryFrom<ParsedDimension> for Dimension {
         for (unit, power) in dimension.denominator {
             if !(unit.name == "unitless" || unit.name == "number") {
                 if let Some(chemical) = unit.chemical {
-                    let compound = Compound::parse(chemical.as_str()).ok_or(())?;
+                    let compound = siffra_try!(
+                        Compound::parse(chemical.as_str()).ok_or(()),
+                        "Syntax Error",
+                        "Error parsing compound",
+                        Some(unit.span)
+                    );
                     quantities.push((
-                        Quantity::from_str(unit.name.as_str())?.with_chemical(compound),
+                        siffra_try!(
+                            Quantity::from_str(unit.name.as_str()),
+                            "Syntax Error",
+                            "Error parsing quantity",
+                            Some(unit.span)
+                        )
+                        .with_chemical(compound),
                         Float::from(-power),
                     ));
                 } else {
-                    quantities.push((Quantity::from_str(unit.name.as_str())?, Float::from(-power)));
+                    quantities.push((
+                        siffra_try!(
+                            Quantity::from_str(unit.name.as_str()),
+                            "Syntax Error",
+                            "Error parsing quantity",
+                            Some(unit.span)
+                        ),
+                        Float::from(-power),
+                    ));
                 }
             }
         }
@@ -111,21 +160,26 @@ impl TryFrom<ParsedDimension> for Dimension {
 }
 
 impl TryFrom<ParsedExpr> for Expression {
-    type Error = ();
+    type Error = SiffraExecutionError;
 
-    fn try_from(value: ParsedExpr) -> Result<Self, ()> {
+    fn try_from(value: ParsedExpr) -> Result<Self, Self::Error> {
         match value {
-            ParsedExpr::Number { value, units } => {
+            ParsedExpr::Number { value, units, span } => {
                 let dimension = match units {
                     Some(units) => Some(Dimension::try_from(units)?),
                     None => None,
                 };
-                let num = Float::parse(&*value).map_err(|_| ())?;
+                let num = siffra_try!(Float::parse(&*value), "Error parsing number", Some(span));
 
-                Ok(Expression::Constant(Value::new(num, dimension)))
+                Ok(Expression::constant(Value::new(num, dimension)).with_span(span))
             }
-            ParsedExpr::Variable { name } => Ok(Expression::Variable(name)),
-            ParsedExpr::FunctionCall { name, args, base } => {
+            ParsedExpr::Variable { name, span } => Ok(Expression::variable(name).with_span(span)),
+            ParsedExpr::FunctionCall {
+                name,
+                args,
+                base,
+                span,
+            } => {
                 let mut expressions = Vec::with_capacity(args.len() + 1);
 
                 if let Some(base) = base {
@@ -136,48 +190,49 @@ impl TryFrom<ParsedExpr> for Expression {
                     expressions.push(Expression::try_from(arg)?);
                 }
 
-                Ok(Expression::FunctionCall {
-                    name,
-                    args: expressions,
-                })
+                Ok(Expression::function_call(name, expressions).with_span(span))
             }
-            ParsedExpr::UnOpPre { op, rhs } => {
+            ParsedExpr::UnOpPre { op, rhs, span } => {
                 let rhs = Box::new(Expression::try_from(*rhs)?);
 
                 match op {
-                    OpPre::Negate => Ok(Expression::Multiply(
-                        rhs,
-                        Box::new(Expression::Constant(Value::from(-1.0))),
-                    )),
+                    OpPre::Negate => Ok(Expression::multiply(
+                        *rhs,
+                        Expression::constant(Value::from(-1.0)),
+                    )
+                    .with_span(span)),
                 }
             }
-            ParsedExpr::UnOpPost { lhs, op } => {
+            ParsedExpr::UnOpPost { lhs, op, span } => {
                 let lhs = Box::new(Expression::try_from(*lhs)?);
 
                 match op {
-                    OpPost::Factorial => Ok(Expression::FunctionCall {
-                        name: "factorial".to_string(),
-                        args: vec![*lhs],
-                    }),
-                    OpPost::Percent => Ok(Expression::Divide(
-                        lhs,
-                        Box::new(Expression::Constant(Value::from(100.0))),
-                    )),
+                    OpPost::Factorial => Ok(Expression::function_call(
+                        "factorial".to_string(),
+                        vec![*lhs],
+                    )
+                    .with_span(span)),
+                    OpPost::Percent => Ok(Expression::divide(
+                        *lhs,
+                        Expression::constant(Value::from(100.0)),
+                    )
+                    .with_span(span)),
                     OpPost::Convert(dimension) => {
-                        Ok(Expression::Convert(lhs, Dimension::try_from(dimension)?))
+                        Ok(Expression::convert(*lhs, Dimension::try_from(dimension)?)
+                            .with_span(span))
                     }
                 }
             }
-            ParsedExpr::BinOp { lhs, op, rhs } => {
+            ParsedExpr::BinOp { lhs, op, rhs, span } => {
                 let lhs = Box::new(Expression::try_from(*lhs)?);
                 let rhs = Box::new(Expression::try_from(*rhs)?);
 
                 match op {
-                    Op::Add => Ok(Expression::Add(lhs, rhs)),
-                    Op::Subtract => Ok(Expression::Subtract(lhs, rhs)),
-                    Op::Multiply => Ok(Expression::Multiply(lhs, rhs)),
-                    Op::Divide => Ok(Expression::Divide(lhs, rhs)),
-                    Op::Exponent => Ok(Expression::Exponent(lhs, rhs)),
+                    Op::Add => Ok(Expression::add(*lhs, *rhs).with_span(span)),
+                    Op::Subtract => Ok(Expression::subtract(*lhs, *rhs).with_span(span)),
+                    Op::Multiply => Ok(Expression::multiply(*lhs, *rhs).with_span(span)),
+                    Op::Divide => Ok(Expression::divide(*lhs, *rhs).with_span(span)),
+                    Op::Exponent => Ok(Expression::exponent(*lhs, *rhs).with_span(span)),
                 }
             }
         }

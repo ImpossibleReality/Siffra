@@ -1,0 +1,27 @@
+[package]
+name = "siffra-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+rand = "0.8.5"
+md5 = "0.7.0"
+
+[dependencies.siffra]
+path = ".."
+
+[[bin]]
+name = "evaluation"
+path = "fuzz_targets/evaluation.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "corpus-generation"
+path = "src/corpus_generation.rs"

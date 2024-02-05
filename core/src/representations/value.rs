@@ -72,7 +72,7 @@ impl Value {
         let mut new_dimension = other.dimension.clone();
         new_dimension.apply_quantity_map(&qmap);
 
-        let other = other.convert(&new_dimension)?;
+        let other = other.convert(&new_dimension).expect("Conversion failed");
 
         let mut dim = self.dimension.0.clone();
         for (quantity, power) in new_dimension.0.iter() {

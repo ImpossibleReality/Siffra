@@ -1,4 +1,7 @@
 pub mod representation;
+mod span;
+
+pub use span::Span;
 
 use lazy_static;
 use pest::iterators::{Pair, Pairs};
@@ -30,13 +33,15 @@ lazy_static::lazy_static! {
     };
 }
 
-pub fn parse_unit_expr(mut pairs: Pairs<Rule>) -> ParsedDimension {
+pub fn parse_unit_expr(mut pair: Pair<Rule>) -> ParsedDimension {
+    let mut pairs = pair.clone().into_inner();
     let numerator = pairs.find_first_tagged("numerator");
     let denominator = pairs.find_first_tagged("denominator");
 
     let mut units = ParsedDimension {
         numerator: vec![],
         denominator: vec![],
+        span: pair.as_span().into(),
     };
 
     fn parse_mul_group(pair: Pair<Rule>, array: &mut Vec<(ParsedUnit, i32)>) {
@@ -75,6 +80,7 @@ pub fn parse_unit_expr(mut pairs: Pairs<Rule>) -> ParsedDimension {
                         ParsedUnit {
                             name,
                             chemical: Some(chemical),
+                            span: unit.as_span().into(),
                         },
                         power,
                     ));
@@ -86,6 +92,7 @@ pub fn parse_unit_expr(mut pairs: Pairs<Rule>) -> ParsedDimension {
                         ParsedUnit {
                             name,
                             chemical: None,
+                            span: unit.as_span().into(),
                         },
                         power,
                     ));
@@ -135,6 +142,7 @@ pub fn parse_unit_expr(mut pairs: Pairs<Rule>) -> ParsedDimension {
                     ParsedUnit {
                         name,
                         chemical: Some(chemical),
+                        span: unit.as_span().into(),
                     },
                     1,
                 ));
@@ -146,6 +154,7 @@ pub fn parse_unit_expr(mut pairs: Pairs<Rule>) -> ParsedDimension {
                     ParsedUnit {
                         name,
                         chemical: None,
+                        span: unit.as_span().into(),
                     },
                     1,
                 ));
@@ -163,6 +172,7 @@ pub fn parse_expr(pairs: Pairs<Rule>) -> ParsedExpr {
             Rule::number => ParsedExpr::Number {
                 value: primary.as_str().parse().unwrap(),
                 units: None,
+                span: primary.as_span().into(),
             },
             Rule::dimensional_number => ParsedExpr::Number {
                 value: primary
@@ -177,12 +187,15 @@ pub fn parse_expr(pairs: Pairs<Rule>) -> ParsedExpr {
                     .clone()
                     .into_inner()
                     .find(|pair| pair.as_rule() == Rule::units_expr)
-                    .map(|pair| parse_unit_expr(pair.clone().into_inner())),
+                    .map(|pair| parse_unit_expr(pair)),
+                span: primary.as_span().into(),
             },
             Rule::variable => ParsedExpr::Variable {
                 name: primary.as_str().to_string(),
+                span: primary.as_span().into(),
             },
             Rule::ungrouped_function => {
+                let primary_span = primary.as_span();
                 let inner = primary.into_inner();
                 let name = inner
                     .find_first_tagged("name")
@@ -194,9 +207,11 @@ pub fn parse_expr(pairs: Pairs<Rule>) -> ParsedExpr {
                     name,
                     args: vec![parse_expr(Pairs::single(arg))],
                     base: None,
+                    span: primary_span.into(),
                 }
             }
             Rule::grouped_function | Rule::base_function => {
+                let primary_span = primary.as_span();
                 let inner = primary.into_inner();
                 let name = inner
                     .find_first_tagged("name")
@@ -213,9 +228,15 @@ pub fn parse_expr(pairs: Pairs<Rule>) -> ParsedExpr {
                 let base = inner
                     .find_first_tagged("base")
                     .map(|p| Box::new(parse_expr(Pairs::single(p))));
-                ParsedExpr::FunctionCall { name, args, base }
+                ParsedExpr::FunctionCall {
+                    name,
+                    args,
+                    base,
+                    span: primary_span.into(),
+                }
             }
             Rule::grouped_mul_atom => {
+                let primary_span = primary.as_span();
                 let inner = primary.into_inner();
 
                 let mut pairs = inner.peekable();
@@ -225,6 +246,7 @@ pub fn parse_expr(pairs: Pairs<Rule>) -> ParsedExpr {
                         lhs: Box::new(expr),
                         op: Op::Multiply,
                         rhs: Box::new(parse_expr(Pairs::single(pairs.next().unwrap()))),
+                        span: primary_span.into(),
                     };
                 }
 
@@ -232,8 +254,8 @@ pub fn parse_expr(pairs: Pairs<Rule>) -> ParsedExpr {
             }
             rule => unreachable!("Expr::parse expected atom, found {:?}", rule),
         })
-        .map_infix(|lhs, op, rhs| {
-            let op = match op.as_rule() {
+        .map_infix(|lhs, op_pairs, rhs| {
+            let op = match op_pairs.as_rule() {
                 Rule::add => Op::Add,
                 Rule::subtract => Op::Subtract,
                 Rule::multiply => Op::Multiply,
@@ -245,33 +267,37 @@ pub fn parse_expr(pairs: Pairs<Rule>) -> ParsedExpr {
                 lhs: Box::new(lhs),
                 op,
                 rhs: Box::new(rhs),
+                span: op_pairs.as_span().into(),
             }
         })
-        .map_postfix(|lhs, op| {
-            let op = match op.as_rule() {
+        .map_postfix(|lhs, op_pairs| {
+            let op_span = op_pairs.as_span();
+            let op = match op_pairs.as_rule() {
                 Rule::factorial => OpPost::Factorial,
                 Rule::percent => OpPost::Percent,
                 Rule::convert => OpPost::Convert(parse_unit_expr(
-                    op.into_inner()
+                    op_pairs
+                        .into_inner()
                         .find(|pair| pair.as_rule() == Rule::units_expr)
-                        .unwrap()
-                        .into_inner(),
+                        .unwrap(),
                 )),
                 rule => unreachable!("Expr::parse expected postfix operation, found {:?}", rule),
             };
             ParsedExpr::UnOpPost {
                 lhs: Box::new(lhs),
                 op,
+                span: op_span.into(),
             }
         })
-        .map_prefix(|op, rhs| {
-            let op = match op.as_rule() {
+        .map_prefix(|op_pairs, rhs| {
+            let op = match op_pairs.as_rule() {
                 Rule::negative => OpPre::Negate,
                 rule => unreachable!("Expr::parse expected prefix operation, found {:?}", rule),
             };
             ParsedExpr::UnOpPre {
                 op,
                 rhs: Box::new(rhs),
+                span: op_pairs.as_span().into(),
             }
         })
         .parse(pairs)
@@ -342,11 +368,14 @@ mod tests {
                     name: "cos".to_string(),
                     args: vec![ParsedExpr::Number {
                         value: "5".to_string(),
-                        units: None
+                        units: None,
+                        span: Span::new(8, 9),
                     }],
                     base: None,
+                    span: Span::new(4, 10)
                 }],
                 base: None,
+                span: Span::new(0, 13),
             },
             expr
         );
