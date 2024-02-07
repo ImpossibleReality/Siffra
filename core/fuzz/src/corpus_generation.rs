@@ -4,7 +4,6 @@ use rand::Rng;
 use std::fs::File;
 use std::io::Write;
 
-
 const OPERATIONS: [char; 5] = ['+', '-', '*', '/', '^'];
 const UNITS: [&str; 6] = ["m", "s", "kg", "mol", "g", "ms"];
 

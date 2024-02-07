@@ -8,6 +8,7 @@
     appWindow.show();
   });
 </script>
+
 <Titlebar />
 
 <main>

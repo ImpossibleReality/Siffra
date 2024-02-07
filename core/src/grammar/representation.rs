@@ -180,7 +180,7 @@ impl TryFrom<ParsedExpr> for Expression {
                 args,
                 base,
                 span,
-                function_span
+                function_span,
             } => {
                 let mut expressions = Vec::with_capacity(args.len() + 1);
 
@@ -192,7 +192,9 @@ impl TryFrom<ParsedExpr> for Expression {
                     expressions.push(Expression::try_from(arg)?);
                 }
 
-                Ok(Expression::function_call(name, expressions).with_span(span).with_function_name_span(function_span))
+                Ok(Expression::function_call(name, expressions)
+                    .with_span(span)
+                    .with_function_name_span(function_span))
             }
             ParsedExpr::UnOpPre { op, rhs, span } => {
                 let rhs = Box::new(Expression::try_from(*rhs)?);

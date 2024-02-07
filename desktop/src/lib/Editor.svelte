@@ -212,7 +212,8 @@
   }
 
   async function update_result() {
-    const input = inputEl!.innerText;
+    // Replace nbsp with space
+    const input = inputEl!.innerText.replace(/\u00a0/g, " ");
     const data: {
       line: number;
       output: {

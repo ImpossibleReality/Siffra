@@ -85,7 +85,7 @@ pub fn parse_unit_expr(pair: Pair<Rule>) -> ParsedDimension {
                         power,
                     ));
                 } else {
-                    // Unit has no chemical.rs
+                    // Unit has no chemical
                     let name = unit.as_str().to_string();
 
                     array.push((
@@ -197,9 +197,7 @@ pub fn parse_expr(pairs: Pairs<Rule>) -> ParsedExpr {
             Rule::ungrouped_function => {
                 let primary_span = primary.as_span();
                 let inner = primary.into_inner();
-                let name_pair = inner
-                    .find_first_tagged("name")
-                    .unwrap();
+                let name_pair = inner.find_first_tagged("name").unwrap();
 
                 let name = name_pair.as_str().to_string();
                 let name_span = name_pair.as_span();
@@ -216,9 +214,7 @@ pub fn parse_expr(pairs: Pairs<Rule>) -> ParsedExpr {
             Rule::grouped_function | Rule::base_function => {
                 let primary_span = primary.as_span();
                 let inner = primary.into_inner();
-                let name_pair = inner
-                    .find_first_tagged("name")
-                    .unwrap();
+                let name_pair = inner.find_first_tagged("name").unwrap();
                 let name = name_pair.as_str().to_string();
                 let name_span = name_pair.as_span();
 
