@@ -29,9 +29,20 @@ pub fn evaluate_line(line: &str, state: &mut SiffraState) -> EvaluationResult {
     })?;
     let parsed_line = parse_line(pairs);
     match parsed_line {
-        ParsedLine::Comment => Ok(None),
+        ParsedLine::Comment => {
+            state.clear_block_total();
+            Ok(None)
+        }
         ParsedLine::Expression(expr) => {
-            let value = evaluate_expr(&expr.try_into()?, state)?;
+            let value = match evaluate_expr(&expr.try_into()?, state) {
+                Ok(value) => value,
+                Err(err) => {
+                    state.clear_previous_value();
+                    return Err(err);
+                }
+            };
+            state.set_previous_value(value.clone());
+            state.add_to_block_total(&value);
             Ok(Some(value))
         }
         ParsedLine::Variable(name, expr) => {
@@ -39,10 +50,13 @@ pub fn evaluate_line(line: &str, state: &mut SiffraState) -> EvaluationResult {
             match value {
                 Ok(value) => {
                     state.set_variable(&name, value.clone());
+                    state.set_previous_value(value.clone());
+                    state.add_to_block_total(&value);
                     Ok(Some(value))
                 }
                 Err(err) => {
                     state.error_variable(&name, err.clone());
+                    state.clear_previous_value();
                     Err(err)
                 }
             }
@@ -88,6 +102,29 @@ pub fn evaluate_expr(
                         Float::pi().mul(&Float::parse("2").unwrap()),
                         None,
                     )),
+                    "prev" | "ans" | "previous" => {
+                        if let Some(prev) = state.previous_value() {
+                            Ok(prev.clone())
+                        } else {
+                            Err(siffra_error!(
+                                "Name Error",
+                                "No previous value to use",
+                                expr.span()
+                            ))
+                        }
+                    }
+                    "total" | "sum" => {
+                        if let Some(total) = state.block_total() {
+                            Ok(total.clone())
+                        } else {
+                            Err(siffra_error!(
+                                "Total Error",
+                                "Unable to create a block total. Maybe the units don't match?",
+                                expr.span()
+                            ))
+                        }
+                    }
+                    "k" | "K" => Ok(Value::new(Float::parse("1000").unwrap(), None)),
                     _ => Err(siffra_error!(
                         "Name Error",
                         format!("Variable '{}' not found", name),
