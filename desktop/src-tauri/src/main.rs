@@ -15,7 +15,7 @@ enum SiffraOutput {
         message: String,
         description: Option<String>,
         location: Option<String>,
-    }
+    },
 }
 
 #[derive(Serialize, Deserialize)]
@@ -52,7 +52,7 @@ fn get_result(input: &str) -> Vec<SiffraLineOutput> {
                 output.push(SiffraLineOutput {
                     line: i as u16,
                     output: SiffraOutput::Value {
-                        string: display_value(value)
+                        string: display_value(value),
                     },
                 });
             }

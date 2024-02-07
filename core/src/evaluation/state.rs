@@ -1,6 +1,6 @@
+use crate::error::SiffraExecutionError;
 use crate::representations::Value;
 use std::collections::BTreeMap;
-use crate::error::SiffraExecutionError;
 
 pub enum VariableValue {
     Error(SiffraExecutionError),
@@ -32,10 +32,12 @@ impl SiffraState {
     }
 
     pub fn set_variable(&mut self, name: &str, value: Value) {
-        self.variables.insert(name.to_string(), VariableValue::Value(value));
+        self.variables
+            .insert(name.to_string(), VariableValue::Value(value));
     }
 
     pub fn error_variable(&mut self, name: &str, error: SiffraExecutionError) {
-        self.variables.insert(name.to_string(), VariableValue::Error(error));
+        self.variables
+            .insert(name.to_string(), VariableValue::Error(error));
     }
 }

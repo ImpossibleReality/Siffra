@@ -43,6 +43,7 @@ pub enum ParsedExpr {
         args: Vec<ParsedExpr>,
         base: Option<Box<ParsedExpr>>,
         span: Span,
+        function_span: Span,
     },
     UnOpPre {
         op: OpPre,
@@ -94,15 +95,15 @@ impl TryFrom<ParsedDimension> for Dimension {
                 if let Some(chemical) = unit.chemical {
                     let compound = siffra_try!(
                         Compound::parse(chemical.as_str()).ok_or(()),
-                        "Syntax Error",
-                        "Error parsing compound",
+                        "Chemical Error",
+                        "Error parsing chemical compound",
                         Some(unit.span)
                     );
                     quantities.push((
                         siffra_try!(
                             Quantity::from_str(unit.name.as_str()),
-                            "Syntax Error",
-                            "Error parsing quantity",
+                            "Unit Error",
+                            format!("Unit '{}' not defined", unit.name),
                             Some(unit.span)
                         )
                         .with_chemical(compound),
@@ -112,8 +113,8 @@ impl TryFrom<ParsedDimension> for Dimension {
                     quantities.push((
                         siffra_try!(
                             Quantity::from_str(unit.name.as_str()),
-                            "Syntax Error",
-                            "Error parsing quantity",
+                            "Unit Error",
+                            format!("Unit '{}' not defined", unit.name),
                             Some(unit.span)
                         ),
                         Float::from(power),
@@ -179,6 +180,7 @@ impl TryFrom<ParsedExpr> for Expression {
                 args,
                 base,
                 span,
+                function_span
             } => {
                 let mut expressions = Vec::with_capacity(args.len() + 1);
 
@@ -190,7 +192,7 @@ impl TryFrom<ParsedExpr> for Expression {
                     expressions.push(Expression::try_from(arg)?);
                 }
 
-                Ok(Expression::function_call(name, expressions).with_span(span))
+                Ok(Expression::function_call(name, expressions).with_span(span).with_function_name_span(function_span))
             }
             ParsedExpr::UnOpPre { op, rhs, span } => {
                 let rhs = Box::new(Expression::try_from(*rhs)?);

@@ -19,7 +19,7 @@ pub use {
     chemical::{Compound, Element},
     length::Length,
     mass::Mass,
-    temperature::Temperature,
+    temperature::TemperatureInterval,
     time::Time,
 };
 
@@ -31,6 +31,7 @@ pub enum QuantityKind {
     Amount,
     Angle,
     Temperature,
+    TemperatureInterval,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -40,7 +41,7 @@ pub enum Quantity {
     Mass(mass::Mass, Option<Compound>),
     Amount(amount::Amount, Option<Compound>),
     Angle(angle::Angle),
-    Temperature(temperature::Temperature),
+    Temperature(temperature::TemperatureInterval),
 }
 
 impl FromStr for Quantity {

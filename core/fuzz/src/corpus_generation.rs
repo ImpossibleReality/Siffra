@@ -1,9 +1,9 @@
-use rand::Rng;
 use md5::compute as md5_compute;
-use std::collections::HashMap;
-use std::str::FromStr;
+use rand::Rng;
+
 use std::fs::File;
 use std::io::Write;
+
 
 const OPERATIONS: [char; 5] = ['+', '-', '*', '/', '^'];
 const UNITS: [&str; 6] = ["m", "s", "kg", "mol", "g", "ms"];
@@ -70,5 +70,4 @@ fn main() {
         let mut file = File::create(format!("{}/{}.txt", CORPUS_DIR, hash_str)).unwrap();
         file.write_all(expr.as_bytes()).unwrap();
     }
-
 }

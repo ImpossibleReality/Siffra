@@ -2,6 +2,7 @@
   import { onMount, tick } from "svelte";
   import { invoke, os } from "@tauri-apps/api";
   import Result from "./Result.svelte";
+  import { wrapText } from "./wrapText";
 
   let inputEl: HTMLElement | null;
   let displayedEl: HTMLElement | null;
@@ -16,6 +17,7 @@
 
   let lineData: {
     height: number;
+    length: number;
     output: {
       isErr: boolean;
       value?: string;
@@ -89,8 +91,9 @@
     node.innerHTML = new_string;
   }
 
-  function update_input() {
-    update_result();
+  async function update_input() {
+    displayedEl!.innerText = inputEl!.innerText;
+    let result_promise = update_result();
     // Get current cursor position
     const selection = window.getSelection();
     // Remove elements with style properties
@@ -106,7 +109,6 @@
     });
 
     // Shows "Enter your calculation..." when all elements are cleared
-    displayedEl!.innerText = inputEl!.innerText;
     if (inputEl!.innerText.trim() === "") {
       inputEl!.innerText = "";
     }
@@ -132,7 +134,7 @@
     }
     linesEl!.innerHTML = html;
 
-    update_line_size();
+    await update_line_size();
 
     highlight_matches(
       displayedEl!,
@@ -142,9 +144,27 @@
         ["operation", operation_regex],
       ]),
     );
+
+    // Highlight errors
+
+    await result_promise;
+
+    let currentChars = 0;
+    for (const line of lineData) {
+      if (line.output.isErr) {
+        const span = line.output.error_span!;
+        wrapText(
+          displayedEl!,
+          "error",
+          currentChars + span[0],
+          currentChars + span[1],
+        );
+      }
+      currentChars += line.length;
+    }
   }
 
-  function update_line_size() {
+  async function update_line_size() {
     // Increase the font size in increments of 1 px as editor gets bigger
     const fontSize = Math.max(
       Math.min(1.1, 0.9 + (window.innerWidth - 300) / 800),
@@ -166,6 +186,7 @@
         if (typeof lineData[i] === "undefined") {
           lineData[i] = {
             height: 0,
+            length: 0,
             output: {
               isErr: false,
               value: "",
@@ -174,6 +195,7 @@
             endPadding: 0,
           };
         }
+        lineData[i].length = lineEl.textContent!.length;
         lineData[i].height = lineEl.getBoundingClientRect().height;
         if (lineData[i].height > parseInt(lineHeight.split("px")[0])) {
           showBorder = true;
@@ -215,6 +237,19 @@
       return line;
     });
     for (const output of data) {
+      if (typeof lineData[output.line] === "undefined") {
+        lineData[output.line] = {
+          height: 0,
+          length: 0,
+          output: {
+            isErr: false,
+            value: "",
+          },
+          startPadding: 0,
+          endPadding: 0,
+        };
+      }
+
       if (output.output.Value) {
         lineData[output.line].output = {
           isErr: false,
@@ -233,6 +268,7 @@
     }
 
     await tick();
+
     for (const el of outputEl!.querySelectorAll(".output")) {
       lineData[parseInt(el.dataset.line!)].endPadding =
         el.getBoundingClientRect().width;
@@ -240,7 +276,7 @@
   }
 
   onMount(() => {
-    os.platform().then(p => {
+    os.platform().then((p) => {
       platform = p;
     });
 
@@ -374,8 +410,8 @@
     content: "Enter your calculations...";
     color: #4b5263;
   }
-.input-el.win32 {
-    display:inline-block;
+  .input-el.win32 {
+    display: inline-block;
   }
   .lines-el,
   .displayed-el {
@@ -398,6 +434,21 @@
   }
   .displayed-el :global(.comment) {
     color: #727b8c;
+  }
+  .displayed-el :global(.error) {
+    position: relative;
+    text-decoration: none;
+    border-bottom: 2px rgba(255, 40, 40, 0.8) solid;
+  }
+  .displayed-el :global(.error)::before {
+    content: " ";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(255, 40, 40, 0.07);
+    pointer-events: none;
   }
   .lines-el {
     color: transparent;

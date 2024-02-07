@@ -4,12 +4,13 @@ use crate::error::SiffraExecutionError;
 use pest::error::InputLocation;
 use pest::Parser;
 pub use state::SiffraState;
+use std::ops::Mul;
 
+use crate::evaluation::state::VariableAccessError;
 use crate::grammar::representation::ParsedLine;
 use crate::grammar::{parse_line, Rule, SiffraParser, Span};
 use crate::representations::{Dimension, Expression, Float, InnerExpression, Value};
 use crate::{siffra_error, siffra_try};
-use crate::evaluation::state::VariableAccessError;
 
 pub type EvaluationResult = Result<Option<Value>, SiffraExecutionError>;
 
@@ -83,6 +84,10 @@ pub fn evaluate_expr(
                 match name.as_str() {
                     "pi" => Ok(Value::new(Float::pi(), None)),
                     "e" => Ok(Value::new(Float::e(), None)),
+                    "tau" => Ok(Value::new(
+                        Float::pi().mul(&Float::parse("2").unwrap()),
+                        None,
+                    )),
                     _ => Err(siffra_error!(
                         "Name Error",
                         format!("Variable '{}' not found", name),
@@ -102,7 +107,7 @@ pub fn evaluate_expr(
                     Err(siffra_error!(
                         "Not Yet Implemented Error",
                         "Factorial function not yet implemented",
-                        expr.span()
+                        expr.function_name_span().or(expr.span())
                     ))
                 }
                 "log" => {
@@ -214,7 +219,11 @@ pub fn evaluate_expr(
                     }
                 }
 
-                _ => Err(siffra_error!("Function not defined", expr.span())),
+                name => Err(siffra_error!(
+                    "Name Error",
+                    format!("The function '{}' is not defined", name),
+                    expr.function_name_span().or(expr.span())
+                )),
             }
         }
         InnerExpression::Multiply(a, b) => {

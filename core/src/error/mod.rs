@@ -44,9 +44,7 @@ impl SiffraExecutionError {
     }
     pub fn location(&self) -> Option<String> {
         match &self.location {
-            Some((file, line)) => {
-                Some(format!("{}:{}", file, line))
-            }
+            Some((file, line)) => Some(format!("{}:{}", file, line)),
             None => None,
         }
     }

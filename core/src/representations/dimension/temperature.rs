@@ -2,7 +2,7 @@ use crate::{quantity, ratio};
 
 // NOTE: This is for temperature INTERVALS, not absolute temperatures.
 quantity!(
-    Temperature,
+    TemperatureInterval,
     [
         // Note: Interval between celsius is in kelvins.
         (

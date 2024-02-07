@@ -33,7 +33,7 @@ lazy_static::lazy_static! {
     };
 }
 
-pub fn parse_unit_expr(mut pair: Pair<Rule>) -> ParsedDimension {
+pub fn parse_unit_expr(pair: Pair<Rule>) -> ParsedDimension {
     let mut pairs = pair.clone().into_inner();
     let numerator = pairs.find_first_tagged("numerator");
     let denominator = pairs.find_first_tagged("denominator");
@@ -197,27 +197,31 @@ pub fn parse_expr(pairs: Pairs<Rule>) -> ParsedExpr {
             Rule::ungrouped_function => {
                 let primary_span = primary.as_span();
                 let inner = primary.into_inner();
-                let name = inner
+                let name_pair = inner
                     .find_first_tagged("name")
-                    .unwrap()
-                    .as_str()
-                    .to_string();
+                    .unwrap();
+
+                let name = name_pair.as_str().to_string();
+                let name_span = name_pair.as_span();
+
                 let arg = inner.find_first_tagged("input").unwrap();
                 ParsedExpr::FunctionCall {
                     name,
                     args: vec![parse_expr(Pairs::single(arg))],
                     base: None,
                     span: primary_span.into(),
+                    function_span: name_span.into(),
                 }
             }
             Rule::grouped_function | Rule::base_function => {
                 let primary_span = primary.as_span();
                 let inner = primary.into_inner();
-                let name = inner
+                let name_pair = inner
                     .find_first_tagged("name")
-                    .unwrap()
-                    .as_str()
-                    .to_string();
+                    .unwrap();
+                let name = name_pair.as_str().to_string();
+                let name_span = name_pair.as_span();
+
                 let args = inner
                     .clone()
                     .find(|pair| pair.as_rule() == Rule::function_input)
@@ -233,6 +237,7 @@ pub fn parse_expr(pairs: Pairs<Rule>) -> ParsedExpr {
                     args,
                     base,
                     span: primary_span.into(),
+                    function_span: name_span.into(),
                 }
             }
             Rule::grouped_mul_atom => {
@@ -372,10 +377,12 @@ mod tests {
                         span: Span::new(8, 9),
                     }],
                     base: None,
-                    span: Span::new(4, 10)
+                    span: Span::new(4, 10),
+                    function_span: Span::new(4, 7),
                 }],
                 base: None,
-                span: Span::new(0, 13),
+                span: Span::new(0, 11),
+                function_span: Span::new(0, 3),
             },
             expr
         );

@@ -6,6 +6,7 @@ use crate::representations::Value;
 pub struct Expression {
     pub inner: InnerExpression,
     pub span: Option<Span>,
+    pub function_name_span: Option<Span>,
 }
 
 #[derive(Debug, Clone)]
@@ -23,7 +24,11 @@ pub enum InnerExpression {
 
 impl Expression {
     pub fn new(inner: InnerExpression) -> Expression {
-        Expression { inner, span: None }
+        Expression {
+            inner,
+            span: None,
+            function_name_span: None,
+        }
     }
 
     pub fn constant(value: Value) -> Expression {
@@ -67,9 +72,19 @@ impl Expression {
         self
     }
 
+    pub fn with_function_name_span(mut self, span: Span) -> Expression {
+        self.function_name_span = Some(span);
+        self
+    }
+
     pub fn span(&self) -> Option<Span> {
         self.span
     }
+
+    pub fn function_name_span(&self) -> Option<Span> {
+        self.function_name_span
+    }
+
     pub fn inner(&self) -> &InnerExpression {
         &self.inner
     }
