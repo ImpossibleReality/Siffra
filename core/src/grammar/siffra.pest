@@ -2,7 +2,7 @@ WHITESPACE = _{ " " }
 COMMENT = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" | "//" ~ (ANY ~ !NEWLINE)* }
 
 digit = { '0'..'9' }
-digits = _{ digit+ }
+digits = _{ digit ~ (("," | "_")? ~ digit)* }
 
 ident = @{ (ASCII_ALPHA) ~ (ASCII_ALPHANUMERIC | "_")* }
 

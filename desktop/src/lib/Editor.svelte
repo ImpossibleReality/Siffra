@@ -32,7 +32,7 @@
 
   const operation_regex =
     /(=|\+|plus|-|minus|times|of|\/|over|divided by|divide by|by|\*|\^)/dg;
-  const number_regex = /(\d+(?:\.\d+)?(?:E\d+)?)/dg;
+  const number_regex = /((?:\d|,|_)+(?:\.(?:\d|,|_)+)?(?:E(?:\d|,|_)+)?)/dg;
   const comment_regex = /(\/\/.*|\/\*.*\*\/)/dg;
 
   function escapeHTML(unsafe: String): String {
