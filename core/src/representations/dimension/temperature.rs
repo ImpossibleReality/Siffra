@@ -6,7 +6,7 @@ quantity!(
     [
         // Note: Interval between celsius is in kelvins.
         (
-            Kelvin,
+            KelvinInterval,
             ratio!(1 / 1),
             "iK",
             "interval of kelvin",
@@ -14,7 +14,7 @@ quantity!(
             "interval kelvin"
         ),
         (
-            Fahrenheit,
+            FahrenheitInterval,
             ratio!(5 / 9),
             "iF",
             "interval of farenheit",

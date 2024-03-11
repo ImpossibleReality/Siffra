@@ -4,19 +4,6 @@
   import Toggle from "./Toggle.svelte";
   import Tooltip from "./Tooltip.svelte";
 
-  let buttonEl: HTMLButtonElement;
-  let copied = false;
-  let precision = 10;
-
-  $: {
-    console.log(precision);
-    if (precision > 30 && precision != null) {
-      precision = 30;
-    } else if (precision < 1 && precision != null) {
-      precision = 1;
-    }
-  }
-
   export let output: {
     isErr: boolean;
     value?: string;
@@ -25,6 +12,20 @@
     error_location?: string;
     error_span?: [number, number];
   };
+  export let convert: () => void;
+
+  let buttonEl: HTMLButtonElement;
+  let copied = false;
+  let precision = 10;
+  let scrollAmount = 0;
+
+  $: {
+    if (precision > 30 && precision != null) {
+      precision = 30;
+    } else if (precision < 1 && precision != null) {
+      precision = 1;
+    }
+  }
 
   $: isEmpty = !output.value && !output.isErr;
 
@@ -33,14 +34,30 @@
     states: { open },
   } = createPopover({
     forceVisible: true,
+    closeOnOutsideClick: true,
+    onOutsideClick: (e) => {
+      $open = false;
+      e.preventDefault();
+    },
+    closeOnEscape: false,
   });
+
+  function copyAnswer() {
+    navigator.clipboard.writeText(output.value!);
+  }
+
+  function escapeEventListener(e: KeyboardEvent) {
+    if (e.key === "Escape") {
+      $open = false;
+    }
+  }
 
   onMount(() => {
     function handleKeyDown(e: KeyboardEvent) {
       // ctrl/cmd + c to copy
       if ((e.ctrlKey || e.metaKey) && e.key === "c" && !output.isErr) {
         e.preventDefault();
-        navigator.clipboard.writeText(output.value!);
+        copyAnswer();
         copied = true;
         setTimeout(() => {
           copied = false;
@@ -55,6 +72,7 @@
       buttonEl.addEventListener("mouseleave", () => {
         window.removeEventListener("keydown", handleKeyDown);
       });
+      window.addEventListener("keydown", escapeEventListener);
     }
   });
 </script>
@@ -76,8 +94,24 @@
     <div use:melt={$arrow} class="arrow" />
     {#if !output.isErr}
       <div class="btn-actions">
-        <button class="btn"> Copy </button>
-        <button class="btn"> Convert </button>
+        <button
+          class="btn"
+          on:click={() => {
+            copyAnswer();
+            $open = false;
+          }}
+        >
+          Copy
+        </button>
+        <button
+          class="btn"
+          on:click={() => {
+            convert();
+            $open = false;
+          }}
+        >
+          Convert
+        </button>
       </div>
       <div class="precision-selection">
         <label>
@@ -89,6 +123,25 @@
             min="1"
             max="30"
             on:click={(e) => e.target.select()}
+            on:wheel={(e) => {
+              e.preventDefault();
+              if (e.deltaMode === 0) {
+                scrollAmount += e.deltaY;
+                if (scrollAmount >= 30) {
+                  precision++;
+                  scrollAmount = 0;
+                } else if (scrollAmount <= -30) {
+                  precision--;
+                  scrollAmount = 0;
+                }
+              } else {
+                if (e.deltaY < 0) {
+                  precision++;
+                } else {
+                  precision--;
+                }
+              }
+            }}
             on:keypress={(e) => {
               if (e.key === "Enter") {
                 //@ts-ignore

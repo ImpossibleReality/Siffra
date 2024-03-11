@@ -41,7 +41,7 @@ pub enum Quantity {
     Mass(mass::Mass, Option<Compound>),
     Amount(amount::Amount, Option<Compound>),
     Angle(angle::Angle),
-    Temperature(temperature::TemperatureInterval),
+    TemperatureInterval(temperature::TemperatureInterval),
 }
 
 impl FromStr for Quantity {
@@ -68,6 +68,12 @@ impl FromStr for Quantity {
             return Ok(Quantity::Angle(angle::Angle::from_str(s).unwrap()));
         }
 
+        if temperature::TemperatureInterval::from_str(s).is_ok() {
+            return Ok(Quantity::TemperatureInterval(
+                temperature::TemperatureInterval::from_str(s).unwrap(),
+            ));
+        }
+
         Err(())
     }
 }
@@ -88,7 +94,7 @@ impl Quantity {
             Quantity::Mass(_, _) => QuantityKind::Mass,
             Quantity::Amount(_, _) => QuantityKind::Amount,
             Quantity::Angle(_) => QuantityKind::Angle,
-            Quantity::Temperature(_) => QuantityKind::Temperature,
+            Quantity::TemperatureInterval(_) => QuantityKind::Temperature,
         }
     }
 
@@ -111,7 +117,7 @@ impl Quantity {
                 }
             }
             Quantity::Angle(angle) => angle.shorthand().to_string(),
-            Quantity::Temperature(temperature) => temperature.shorthand().to_string(),
+            Quantity::TemperatureInterval(temperature) => temperature.shorthand().to_string(),
         }
     }
 
@@ -122,7 +128,7 @@ impl Quantity {
             Quantity::Mass(mass, _) => mass.ratio(),
             Quantity::Amount(amount, _) => amount.ratio(),
             Quantity::Angle(angle) => angle.ratio(),
-            Quantity::Temperature(temperature) => temperature.ratio(),
+            Quantity::TemperatureInterval(temperature) => temperature.ratio(),
         }
     }
 }
