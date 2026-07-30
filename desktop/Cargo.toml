@@ -1,0 +1,46 @@
+[package]
+name = "siffra-desktop"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[package.metadata.packager]
+product-name = "Siffra"
+identifier = "dev.impossiblereality.siffra"
+category = "Utility"
+# CI selects the native formats for its runner. Keeping the full list here
+# makes `cargo packager --release --formats all` useful for local releases.
+formats = ["app", "dmg", "nsis", "wix", "deb", "appimage"]
+description = "A lightweight calculator with dimensional analysis."
+homepage = "https://github.com/ImpossibleReality/Siffra"
+
+before-packaging-command = "cargo build --release -p siffra-desktop"
+binaries-dir = "../target/release"
+out-dir = "../target/release/bundle"
+binaries = [{ path = "siffra-desktop", main = true }]
+
+icons = ["assets/icons/icon.icns", "assets/icons/icon.png"]
+license-file = "../LICENCE.txt"
+
+[dependencies]
+gpui = "0.2.2"
+siffra = { path = "../core" }
+unicode-segmentation = "1.13.3"
+redb = "4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", default-features = false, features = [
+    "clock",
+    "std",
+] }
+dirs = "6"
+cargo-packager-updater = "0.2.3"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc = "0.2"
+raw-window-handle = "0.6"
+
+[dev-dependencies]
+tempfile = "3"

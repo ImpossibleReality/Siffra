@@ -1,0 +1,22 @@
+[package]
+name = "conformance"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+# Cross-checks every unit siffra knows against GNU units (`units(1)`, installed
+# by Homebrew as `gunits`). Not part of the shipped product; run on demand.
+
+[[bin]]
+name = "conformance"
+path = "src/main.rs"
+
+[lib]
+name = "conformance"
+path = "src/lib.rs"
+
+[dependencies]
+siffra = { path = "../core" }

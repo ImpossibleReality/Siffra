@@ -1,0 +1,158 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+# Release assets are published only after all supported platforms produce a
+# signed updater package. It is safe to rerun a failed release: uploads replace
+# an existing asset with the same name.
+permissions:
+  contents: write
+
+jobs:
+  verify-version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ensure the tag matches the Cargo workspace version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(cargo metadata --no-deps --format-version=1 | jq -r '.packages[] | select(.name == "siffra-desktop") | .version')"
+          test "v$version" = "$GITHUB_REF_NAME"
+
+  package:
+    needs: verify-version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-26-intel
+            formats: app,dmg
+            platform: macos-x86_64
+            updater_format: app
+            updater_glob: '*.app.tar.gz'
+            updater_asset: Siffra-macos-x86_64.app.tar.gz
+          - os: macos-15
+            formats: app,dmg
+            platform: macos-aarch64
+            updater_format: app
+            updater_glob: '*.app.tar.gz'
+            updater_asset: Siffra-macos-aarch64.app.tar.gz
+          - os: windows-2025
+            formats: nsis,wix
+            platform: windows-x86_64
+            updater_format: nsis
+            updater_glob: '*-setup.exe'
+            updater_asset: Siffra-windows-x86_64-setup.exe
+          - os: ubuntu-22.04
+            formats: appimage,deb
+            platform: linux-x86_64
+            updater_format: appimage
+            updater_glob: '*.AppImage'
+            updater_asset: Siffra-linux-x86_64.AppImage
+    runs-on: ${{ matrix.os }}
+    env:
+      # This public key is compiled into the binary. Store it as a repository
+      # variable so development builds do not need release configuration.
+      SIFFRA_UPDATER_PUBLIC_KEY: ${{ vars.SIFFRA_UPDATER_PUBLIC_KEY }}
+      # These two secrets sign updater packages with cargo-packager/minisign.
+      CARGO_PACKAGER_SIGN_PRIVATE_KEY: ${{ secrets.CARGO_PACKAGER_SIGN_PRIVATE_KEY }}
+      CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD: ${{ secrets.CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD }}
+      # cargo-packager reads the macOS certificate and notarization credentials
+      # directly when they are provided. They are optional only for fork builds.
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux packaging dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxkbcommon-dev libxkbcommon-x11-dev libxcb-shape0-dev libxcb-xfixes0-dev libgtk-3-dev libwebkit2gtk-4.1-dev libssl-dev
+
+      - name: Install cargo-packager
+        run: cargo install cargo-packager --version 0.11.8 --locked
+
+      - name: Configure macOS signing identity
+        if: runner.os == 'macOS' && env.APPLE_SIGNING_IDENTITY != ''
+        shell: bash
+        run: |
+          printf '\n[package.metadata.packager.macos]\nsigning-identity = "%s"\n' "$APPLE_SIGNING_IDENTITY" >> desktop/Cargo.toml
+
+      - name: Validate release signing configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$SIFFRA_UPDATER_PUBLIC_KEY"
+          test -n "$CARGO_PACKAGER_SIGN_PRIVATE_KEY"
+          test -n "$CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD"
+
+      - name: Package and sign
+        shell: bash
+        run: cargo packager --release --packages siffra-desktop --formats "${{ matrix.formats }}"
+
+      - name: Stage installers and the updater package
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release/distributables
+          updater="$(find target/release/bundle -type f -name "${{ matrix.updater_glob }}" -print -quit)"
+          test -n "$updater"
+          test -f "$updater.sig"
+          cp "$updater" "release/${{ matrix.updater_asset }}"
+          cp "$updater.sig" "release/${{ matrix.updater_asset }}.sig"
+          printf '{"platform":"%s","asset":"%s","format":"%s"}\n' \
+            '${{ matrix.platform }}' '${{ matrix.updater_asset }}' '${{ matrix.updater_format }}' \
+            > release/updater.json
+          find target/release/bundle -type f \
+            ! -path "$updater" ! -path "$updater.sig" \
+            -exec cp {} release/distributables/ \;
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.platform }}
+          path: release
+          if-no-files-found: error
+
+  publish:
+    needs: package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+
+      - name: Stage the custom release notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp ".github/release-notes/${GITHUB_REF_NAME}.md" release-assets/release-notes.md
+
+      - name: Build the signed updater manifest
+        shell: bash
+        run: |
+          chmod +x scripts/create-update-manifest.sh
+          scripts/create-update-manifest.sh "$GITHUB_REF_NAME" release-assets
+
+      - name: Create the GitHub Release and upload assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create "$GITHUB_REF_NAME" --title "Siffra $GITHUB_REF_NAME" --notes-file release-assets/release-notes.md --draft
+          while IFS= read -r -d '' asset; do
+            gh release upload "$GITHUB_REF_NAME" "$asset" --clobber
+          done < <(find release-assets -type f ! -name release-notes.md -print0)
+          gh release edit "$GITHUB_REF_NAME" --draft=false

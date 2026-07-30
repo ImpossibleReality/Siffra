@@ -1,32 +1,72 @@
-<div style="text-align: center">
-    <img src="src-tauri/app-icon.png" alt="Siffra logo" width="128" height="128">
-</div>
-
-
 # Siffra
 
-Siffra is a beautiful, lightweight, fast, and accurate calculator with support for dimensional analysis.
-The project is currently in heavy development, and is not currently stable yet. However, it is usable.
+Siffra is a lightweight, fast, and accurate calculator with support for dimensional analysis built
+with GPUI and Rust.
+
+<div align="center">
+    <img src="screenshot.png" alt="Siffra screenshot" style="border-radius: 0.8rem">
+</div>
 
 ## Installation
-### Building from source
-To build Siffra from source, you will need to have the following installed:
-- [Rust](https://www.rust-lang.org/tools/install)
-- [Bun](https://bun.sh)
 
-Once you have these installed, you can clone the repository and build Siffra with the following commands:
+### Prebuild Binaries
+
+There are provided prebuilt binaries for all supported platforms in the
+[Releases tab](https://github.com/ImpossibleReality/Siffra/releases).
+
+### Building from source
+
+To build Siffra from source, you will need to have the following installed:
+
+- [Rust](https://www.rust-lang.org/tools/install)
+
+Once you have these installed, you can clone the repository and build Siffra with the following
+commands:
+
 ```sh
-bun install
-bun run tauri build
+cargo run -p siffra-desktop
 ```
 
-You will find the built binary in the `src-tauri/target/release/bundle` directory.
+For a native installer, install `cargo-packager` and run
+`cargo packager --release --packages siffra-desktop`.
 
-note: Siffra currently only *officially* supports macOS due to testing limitations, but I am working on adding support for Linux and Windows. Please open an issue if you have any problems running Siffra on your platform.
+Native release artifacts are built for macOS, Windows, and Linux. Please open an issue if you have
+any problems running Siffra on your platform.
+
+## Planned Features
+
+- [x] Basic calculator functionality
+- [x] Basic natural language support
+- [x] Syntax highlighting
+- [x] Variables support
+- [x] Dimensional analysis
+- [x] Unit conversion
+    - [x] Basic units
+    - [x] Dimensions w/ multiple units + exponents (ie. m/s^2)
+    - [x] Derived units (ie. Jules, Newtons, etc.)
+    - [x] Absolute units (ie. Temperature, time/date, etc.)
+    - [x] Stoichiometry
+    - [x] Full support for all SI units (including derived)
+    - [x] Currency units
+- [x] Error handling
+- [x] Support for saving calculations
+- [ ] Multi-window support
+- [ ] Custom defined functions
+- [ ] Preferences page
+- [ ] Plugin + theme system
 
 ## Contributing
 
-Because Siffra is still under heavy development, I am not currently accepting contributions. However, once the project is more stable, I will be accepting contributions. Please do, however, feel free to [open an issue](https://github.com/ImpossibleReality/Siffra/issues/new) if you find a bug or have a feature request.
+Any contributions to Siffra are welcome! If you would like to contribute, please see
+[CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+## Supporting the project
+
+Unlike other calculators that provide similar functionality, Siffra is open-source, which also means
+I am unable to make a profit off of it. If you find Siffra useful to you and would like to support
+my work, you can do so by buying me a coffee using the button below. Thank you!
+
+<a href="https://www.buymeacoffee.com/johannovak" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
 
 ## License
 

@@ -1,0 +1,21 @@
+[workspace]
+resolver = "2"
+members = [
+    "core",
+    "conformance",
+    "desktop",
+]
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true
+
+[workspace.package]
+version = "0.3.0"
+edition = "2024"
+authors = ["Johan Novak <johan@impossiblereality.dev>"]
+license = "MIT"
+repository = "https://github.com/ImpossibleReality/Siffra"
