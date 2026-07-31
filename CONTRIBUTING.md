@@ -2,9 +2,9 @@
 
 # Contributing to Siffra
 
-Contributions are welcome — bug reports, unit definitions, parser fixes, UI polish, docs.
+All contributions are welcome -- bug reports, new units, UI polish, docs.
 
-## Issues
+## Issues and PRs
 
 **Open an issue before a pull request**, excluding trivial changes like typos.
 
@@ -21,16 +21,17 @@ lightweight, and by design shouldn't necessarily support every possible feature.
 
 ## Commits
 
-Use [Conventional Commits](https://www.conventionalcommits.org/). Release notes are curated for
-each release, so write the subject line for someone reading them.
+Use [Conventional Commits](https://www.conventionalcommits.org/). Release notes are generated from
+the log with [git-cliff](https://git-cliff.org/), so write the subject line for a user reading it,
+and squash extraneous commits where possible.
 
 ```
 ✅ fix(parser): treat `in` as a unit when it follows a number
 ❌ fix: bug
 ```
 
-Types that land in the changelog: `feat`, `fix`, `perf`, `refactor`, `docs`, `build`, `ci`, `test`,
-`chore`. Breaking changes take a `!` (`feat!: …`).
+Only three types land in the changelog: `feat`, `fix`, `perf`. Breaking changes take a `!`
+(`feat!: …`).
 
 ## Tests
 
@@ -38,7 +39,7 @@ Types that land in the changelog: `feat`, `fix`, `perf`, `refactor`, `docs`, `bu
 cargo test --workspace
 ```
 
-Bug fixes get a regression test that fails without the fix.
+Bug fixes should get a regression test that fails without the fix.
 
 **If you touched the unit catalog**, also run `cargo run -p conformance -- --fails-only`, which
 cross-checks factors against GNU `units` (`brew install gnu-units` on macOS). The
@@ -48,7 +49,7 @@ proves nothing here.
 ## AI
 
 AI-generated code is completely fine, and needs no disclosure. However, unsupervised AI code is not,
-and honestly just bogs down actual work.
+and can bog down actual work.
 
 This matters a lot especially for unit factors and conversion logic. Make sure to double-check
 conversion factors (a lot of this is already handled by the `conformance` crate)

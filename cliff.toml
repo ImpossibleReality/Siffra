@@ -28,11 +28,4 @@ commit_parsers = [
   { message = "^feat", group = "Features" },
   { message = "^fix", group = "Fixes" },
   { message = "^perf", group = "Performance" },
-  { message = "^refactor", group = "Changed" },
-  { message = "^doc", group = "Documentation" },
-  { message = "^build", group = "Build" },
-  { message = "^ci", group = "Build" },
-  { message = "^test", group = "Tests" },
-  { message = "^chore", group = "Maintenance" },
-  { body = ".*security", group = "Security" },
 ]
