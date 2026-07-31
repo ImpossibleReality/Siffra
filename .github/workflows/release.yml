@@ -34,40 +34,29 @@ jobs:
             updater_format: app
             updater_glob: '*.app.tar.gz'
             updater_asset: Siffra-macos-x86_64.app.tar.gz
+            installer_glob: '*.dmg'
           - os: macos-15
             formats: app,dmg
             platform: macos-aarch64
             updater_format: app
             updater_glob: '*.app.tar.gz'
             updater_asset: Siffra-macos-aarch64.app.tar.gz
+            installer_glob: '*.dmg'
           - os: windows-2025
             formats: nsis,wix
             platform: windows-x86_64
             updater_format: nsis
             updater_glob: '*-setup.exe'
             updater_asset: Siffra-windows-x86_64-setup.exe
+            installer_glob: '*.msi'
           - os: ubuntu-22.04
             formats: appimage,deb
             platform: linux-x86_64
             updater_format: appimage
             updater_glob: '*.AppImage'
             updater_asset: Siffra-linux-x86_64.AppImage
+            installer_glob: '*.deb'
     runs-on: ${{ matrix.os }}
-    env:
-      # This public key is compiled into the binary. Store it as a repository
-      # variable so development builds do not need release configuration.
-      SIFFRA_UPDATER_PUBLIC_KEY: ${{ vars.SIFFRA_UPDATER_PUBLIC_KEY }}
-      # These two secrets sign updater packages with cargo-packager/minisign.
-      CARGO_PACKAGER_SIGN_PRIVATE_KEY: ${{ secrets.CARGO_PACKAGER_SIGN_PRIVATE_KEY }}
-      CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD: ${{ secrets.CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD }}
-      # cargo-packager reads the macOS certificate and notarization credentials
-      # directly when they are provided. They are optional only for fork builds.
-      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-      APPLE_ID: ${{ secrets.APPLE_ID }}
-      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-      APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -82,39 +71,56 @@ jobs:
         run: cargo install cargo-packager --version 0.11.8 --locked
 
       - name: Configure macOS signing identity
-        if: runner.os == 'macOS' && env.APPLE_SIGNING_IDENTITY != ''
+        if: runner.os == 'macOS' && vars.APPLE_SIGNING_IDENTITY != ''
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
         shell: bash
         run: |
           printf '\n[package.metadata.packager.macos]\nsigning-identity = "%s"\n' "$APPLE_SIGNING_IDENTITY" >> desktop/Cargo.toml
 
-      - name: Validate release signing configuration
+      - name: Package and sign
+        env:
+          # The public key is compiled into the binary. The private key and its
+          # password exist only for this step and only produce detached signatures.
+          SIFFRA_UPDATER_PUBLIC_KEY: ${{ vars.SIFFRA_UPDATER_PUBLIC_KEY }}
+          CARGO_PACKAGER_SIGN_PRIVATE_KEY: ${{ secrets.CARGO_PACKAGER_SIGN_PRIVATE_KEY }}
+          CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD: ${{ secrets.CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD }}
+          # cargo-packager reads macOS signing/notarization credentials directly.
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         shell: bash
         run: |
           set -euo pipefail
           test -n "$SIFFRA_UPDATER_PUBLIC_KEY"
           test -n "$CARGO_PACKAGER_SIGN_PRIVATE_KEY"
           test -n "$CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD"
-
-      - name: Package and sign
-        shell: bash
-        run: cargo packager --release --packages siffra-desktop --formats "${{ matrix.formats }}"
+          cargo packager --release --packages siffra-desktop --formats "${{ matrix.formats }}"
 
       - name: Stage installers and the updater package
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p release/distributables
+          mkdir -p release
           updater="$(find target/release/bundle -type f -name "${{ matrix.updater_glob }}" -print -quit)"
+          installer="$(find target/release/bundle -type f -name "${{ matrix.installer_glob }}" -print -quit)"
           test -n "$updater"
+          test -n "$installer"
           test -f "$updater.sig"
+          test -f "$installer.sig"
           cp "$updater" "release/${{ matrix.updater_asset }}"
           cp "$updater.sig" "release/${{ matrix.updater_asset }}.sig"
+          cp "$installer" "release/$(basename "$installer")"
+          cp "$installer.sig" "release/$(basename "$installer").sig"
           printf '{"platform":"%s","asset":"%s","format":"%s"}\n' \
             '${{ matrix.platform }}' '${{ matrix.updater_asset }}' '${{ matrix.updater_format }}' \
             > release/updater.json
-          find target/release/bundle -type f \
-            ! -path "$updater" ! -path "$updater.sig" \
-            -exec cp {} release/distributables/ \;
+
+          # Keep the artifact contract narrow: one updater package, one native
+          # installer, their detached signatures, and internal manifest data.
+          test "$(find release -maxdepth 1 -type f | wc -l | tr -d ' ')" -eq 5
 
       - uses: actions/upload-artifact@v4
         with:
@@ -133,11 +139,25 @@ jobs:
         with:
           path: release-assets
 
-      - name: Stage the custom release notes
+      # Add .github/release-notes/vX.Y.Z.md to override the generated body for
+      # that exact tag. The full CHANGELOG.md asset remains generated below.
+      - name: Stage custom release notes
+        if: ${{ hashFiles(format('.github/release-notes/{0}.md', github.ref_name)) != '' }}
         shell: bash
         run: |
           set -euo pipefail
           cp ".github/release-notes/${GITHUB_REF_NAME}.md" release-assets/release-notes.md
+
+      - name: Generate release notes
+        if: ${{ hashFiles(format('.github/release-notes/{0}.md', github.ref_name)) == '' }}
+        uses: orhun/git-cliff-action@v4
+        with:
+          args: --config cliff.toml --unreleased --tag ${{ github.ref_name }} --output release-assets/release-notes.md
+
+      - name: Generate the full changelog asset
+        uses: orhun/git-cliff-action@v4
+        with:
+          args: --config cliff.toml --output release-assets/CHANGELOG.md
 
       - name: Build the signed updater manifest
         shell: bash
@@ -152,7 +172,24 @@ jobs:
         run: |
           set -euo pipefail
           gh release create "$GITHUB_REF_NAME" --title "Siffra $GITHUB_REF_NAME" --notes-file release-assets/release-notes.md --draft
+
+          assets=()
           while IFS= read -r -d '' asset; do
+            assets+=("$asset")
+          done < <(find release-assets -type f \( \
+            -name '*.AppImage' -o -name '*.AppImage.sig' -o \
+            -name '*.app.tar.gz' -o -name '*.app.tar.gz.sig' -o \
+            -name '*-setup.exe' -o -name '*-setup.exe.sig' -o \
+            -name '*.dmg' -o -name '*.dmg.sig' -o \
+            -name '*.msi' -o -name '*.msi.sig' -o \
+            -name '*.deb' -o -name '*.deb.sig' -o \
+            -name latest.json -o -name CHANGELOG.md \
+            \) -print0)
+
+          # Four platforms contribute four public artifacts each, followed by
+          # the updater manifest and changelog. Refuse to publish anything else.
+          test "${#assets[@]}" -eq 18
+          for asset in "${assets[@]}"; do
             gh release upload "$GITHUB_REF_NAME" "$asset" --clobber
-          done < <(find release-assets -type f ! -name release-notes.md -print0)
+          done
           gh release edit "$GITHUB_REF_NAME" --draft=false
