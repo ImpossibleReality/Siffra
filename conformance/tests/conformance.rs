@@ -8,7 +8,7 @@
 //! Skips cleanly (rather than failing) when `units` is not installed, so it does
 //! not break builds on machines without the reference tool.
 
-use conformance::{cases, is_prefixed_case, reference_available, run_all, run_case, Status};
+use conformance::{Status, cases, is_prefixed_case, reference_available, run_all, run_case};
 
 #[test]
 fn pound_mole_has_a_hand_checked_reference_factor() {

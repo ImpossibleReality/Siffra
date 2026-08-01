@@ -29,8 +29,8 @@
 
 use std::collections::BTreeMap;
 use std::process::Command;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use siffra::representations::{
     AbsoluteTemperature, Amount, BaseDimension, DerivedUnit, Float, Quantity, Unit,
@@ -219,8 +219,7 @@ fn reference_names(symbol: &str, name: &str, aliases: &[String]) -> Vec<String> 
 /// plain cases. Where one still does (`kg`, `km`, `ha`), the plain case covers
 /// it and the generated duplicate is dropped.
 fn prefixed_cases(catalog: &siffra::catalog::Catalog) -> Vec<Case> {
-    let spelled_out =
-        |name: &str| name.len() >= 3 && name.chars().all(|c| c.is_ascii_lowercase());
+    let spelled_out = |name: &str| name.len() >= 3 && name.chars().all(|c| c.is_ascii_lowercase());
 
     let mut cases = Vec::new();
     for unit in catalog.units.iter().filter(|unit| unit.si_prefixes) {
@@ -323,10 +322,7 @@ pub fn cases() -> Vec<Case> {
 fn build_check(unit: &Unit) -> CheckKind {
     // GNU units has no pound-mole entry. Keep an explicit definition check so
     // this high-risk factor cannot be reported as a successful "no ref" row.
-    if matches!(
-        unit,
-        Unit::Base(Quantity::Amount(Amount::PoundMole, _))
-    ) {
+    if matches!(unit, Unit::Base(Quantity::Amount(Amount::PoundMole, _))) {
         let factor = unit.factor().map(|f| float_to_f64(&f)).unwrap_or(f64::NAN);
         return CheckKind::Scalar {
             siffra_factor: factor,
@@ -475,6 +471,20 @@ pub fn known_difference(symbol: &str) -> Option<&'static str> {
     Some(match symbol {
         "Mach" => {
             "Mach 1 is temperature-dependent; siffra uses 340.29 m/s (15 °C), GNU units 331.46 m/s (0 °C)"
+        }
+        // GNU units' bare `year` is the *tropical* year (365.242198781 d, the
+        // seasonal cycle); everything below it is derived from that. siffra uses
+        // the Julian year (365.25 d exactly) — the IAU's definition, what `yr`
+        // means in `ly` and in "3 years from now", and the only one of the two
+        // that is a fixed number of days.
+        "y" => {
+            "siffra uses the Julian year (365.25 d); GNU units the tropical year (365.242198781 d)"
+        }
+        "mo" => {
+            "one twelfth of siffra's Julian year (30.4375 d); GNU units divides the tropical year instead"
+        }
+        "decade" | "century" | "millennium" => {
+            "a multiple of siffra's Julian year (365.25 d); GNU units multiplies the tropical year instead"
         }
         _ => return None,
     })

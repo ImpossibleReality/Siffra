@@ -28,7 +28,13 @@ quantity!(
             "long tons"
         ),
         (Carat, ratio!(1 / 5), "ct", "carat", "carats"),
-        (Grain, ratio!(6_479_891 / 100_000_000), "gr", "grain", "grains"),
+        (
+            Grain,
+            ratio!(6_479_891 / 100_000_000),
+            "gr",
+            "grain",
+            "grains"
+        ),
         (
             Dram,
             ratio!(28_349_523_125 / 16_000_000_000),
@@ -43,7 +49,13 @@ quantity!(
             "hundredweight",
             "hundredweights"
         ),
-        (Slug, ratio!(1_459_390_294 / 100_000), "slug", "slugs", "slg"),
+        (
+            Slug,
+            ratio!(1_459_390_294 / 100_000),
+            "slug",
+            "slugs",
+            "slg"
+        ),
         (
             TroyOunce,
             ratio!(311_034_768 / 10_000_000),
@@ -58,9 +70,10 @@ quantity!(
             "troy pound",
             "troy pounds"
         ),
+        // Measured, not defined: CODATA 2022 recommends 1.66053906892(52)e-27 kg.
         (
             Dalton,
-            Float::parse("1.66053906660e-24").unwrap(),
+            Float::parse("1.66053906892e-24").unwrap(),
             "Da",
             "dalton",
             "daltons",

@@ -10,7 +10,7 @@
 
 use std::collections::BTreeMap;
 
-use conformance::{run_all, Outcome, Status, EXACT_TOL, NEAR_TOL};
+use conformance::{EXACT_TOL, NEAR_TOL, Outcome, Status, run_all};
 
 const GREEN: &str = "\x1b[32m";
 const YELLOW: &str = "\x1b[33m";

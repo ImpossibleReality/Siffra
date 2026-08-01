@@ -1,7 +1,7 @@
+use crate::representations::Float;
 use crate::representations::dimension::{
     Angle, Data, Dimensionality, ElectricCurrent, Length, Mass, Quantity, Time,
 };
-use crate::representations::Float;
 use crate::{ratio, si_prefixable};
 use std::str::FromStr;
 
@@ -135,7 +135,7 @@ derived_units! {
         base: [(Quantity::Mass(Mass::Kilogram, None), 1), (Quantity::Length(Length::Meter), -1), (Quantity::Time(Time::Second), -2)] },
     MillimeterMercury { short: "mmHg", long: "millimeter of mercury", aka: [], scalar: Float::parse("133.322387415").unwrap(),
         base: [(Quantity::Mass(Mass::Kilogram, None), 1), (Quantity::Length(Length::Meter), -1), (Quantity::Time(Time::Second), -2)] },
-    InchMercury { short: "inHg", long: "inch of mercury", aka: [], scalar: Float::parse("3386.389").unwrap(),
+    InchMercury { short: "inHg", long: "inch of mercury", aka: [], scalar: Float::parse("3386.388640341").unwrap(),
         base: [(Quantity::Mass(Mass::Kilogram, None), 1), (Quantity::Length(Length::Meter), -1), (Quantity::Time(Time::Second), -2)] },
 
     Rpm { short: "rpm", long: "revolutions per minute", aka: [], scalar: ratio!(1 / 1),
