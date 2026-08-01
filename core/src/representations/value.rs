@@ -266,10 +266,16 @@ mod test {
     fn test_conversion() {
         let area = Value::new(
             Float::parse("2.0").unwrap(),
-            Some(Dimension(vec![base(Quantity::Length(Length::Kilometer), "2.0")])),
+            Some(Dimension(vec![base(
+                Quantity::Length(Length::Kilometer),
+                "2.0",
+            )])),
         );
 
-        let area = area.convert(&Dimension(vec![base(Quantity::Length(Length::Meter), "2.0")]));
+        let area = area.convert(&Dimension(vec![base(
+            Quantity::Length(Length::Meter),
+            "2.0",
+        )]));
 
         assert_eq!(
             area.unwrap().value.to_string(),
@@ -352,7 +358,10 @@ mod test {
     fn derived_unit_converts_to_base_expansion() {
         let speed = Value::new(
             Float::from(60),
-            Some(Dimension(vec![(Unit::Derived(DerivedUnit::MilePerHour), Float::from(1))])),
+            Some(Dimension(vec![(
+                Unit::Derived(DerivedUnit::MilePerHour),
+                Float::from(1),
+            )])),
         );
 
         let as_m_per_s = Dimension(vec![
@@ -360,7 +369,9 @@ mod test {
             base(Quantity::Time(Time::Second), "-1"),
         ]);
 
-        let converted = speed.convert(&as_m_per_s).expect("mph -> m/s should convert");
+        let converted = speed
+            .convert(&as_m_per_s)
+            .expect("mph -> m/s should convert");
         let expected = &Float::from(60) * &(&Length::Mile.ratio() / &Time::Hour.ratio());
         assert_eq!(converted.value.to_string(), expected.to_string());
     }

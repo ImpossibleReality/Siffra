@@ -2,8 +2,8 @@
 //! suite stays offline and deterministic; the live Frankfurter fetch + disk
 //! cache is exercised only at runtime.
 
-use siffra::evaluation::{evaluate_line, SiffraState};
-use siffra::representations::{install_static_rates, Value};
+use siffra::evaluation::{SiffraState, evaluate_line};
+use siffra::representations::{Value, install_static_rates};
 
 fn display_value(val: Value) -> String {
     let (val, dim) = val.into_parts();

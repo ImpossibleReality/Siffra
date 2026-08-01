@@ -16,7 +16,10 @@ pub enum InnerExpression {
     Percent(Box<Expression>),
     Convert(Box<Expression>, Dimension),
     Variable(String),
-    FunctionCall { name: String, args: Vec<Expression> },
+    FunctionCall {
+        name: String,
+        args: Vec<Expression>,
+    },
     Multiply(Box<Expression>, Box<Expression>),
     Divide(Box<Expression>, Box<Expression>),
     Add(Box<Expression>, Box<Expression>),

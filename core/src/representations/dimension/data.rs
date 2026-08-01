@@ -6,8 +6,23 @@ quantity!(
     Data,
     [
         (Bit, ratio!(1 / 1), "b", "bit", "bits"),
-        (Kilobit, ratio!(1_000 / 1), "kbit", "kilobit", "kilobits", "kb", "Kb"),
-        (Megabit, ratio!(1_000_000 / 1), "Mbit", "megabit", "megabits", "Mb"),
+        (
+            Kilobit,
+            ratio!(1_000 / 1),
+            "kbit",
+            "kilobit",
+            "kilobits",
+            "kb",
+            "Kb"
+        ),
+        (
+            Megabit,
+            ratio!(1_000_000 / 1),
+            "Mbit",
+            "megabit",
+            "megabits",
+            "Mb"
+        ),
         (
             Gigabit,
             ratio!(1_000_000_000 / 1),
@@ -25,7 +40,14 @@ quantity!(
             "Tb"
         ),
         (Byte, ratio!(8 / 1), "B", "byte", "bytes"),
-        (Kilobyte, ratio!(8_000 / 1), "kB", "kilobyte", "kilobytes", "KB"),
+        (
+            Kilobyte,
+            ratio!(8_000 / 1),
+            "kB",
+            "kilobyte",
+            "kilobytes",
+            "KB"
+        ),
         (
             Megabyte,
             ratio!(8_000_000 / 1),

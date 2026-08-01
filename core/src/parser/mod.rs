@@ -500,13 +500,15 @@ fn line_parser<'a>() -> impl Parser<'a, &'a str, ParsedLine, Extra<'a>> {
             .clone()
             .then(func_base.or_not())
             .then(args)
-            .map_with(|(((name, function_span), base), args), e| ParsedExpr::FunctionCall {
-                name,
-                args,
-                base: base.map(Box::new),
-                span: to_span(e.span()),
-                function_span,
-            })
+            .map_with(
+                |(((name, function_span), base), args), e| ParsedExpr::FunctionCall {
+                    name,
+                    args,
+                    base: base.map(Box::new),
+                    span: to_span(e.span()),
+                    function_span,
+                },
+            )
             .boxed();
 
         // An implicit product has ordinary multiplication precedence, rather
@@ -792,10 +794,7 @@ fn line_parser<'a>() -> impl Parser<'a, &'a str, ParsedLine, Extra<'a>> {
     // any remaining characters so a trailing `+ 2` (etc.) can be reported
     // against the arrow itself, rather than surfacing a generic "unexpected
     // character" further along.
-    let rest_of_line: Boxed<'a, String> = any()
-        .repeated()
-        .collect::<String>()
-        .boxed();
+    let rest_of_line: Boxed<'a, String> = any().repeated().collect::<String>().boxed();
 
     let arrow_conversion = sp
         .clone()

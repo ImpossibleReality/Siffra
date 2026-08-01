@@ -1,4 +1,4 @@
-use siffra::evaluation::{evaluate_line, SiffraState};
+use siffra::evaluation::{SiffraState, evaluate_line};
 
 fn error(line: &str) -> (String, String) {
     let error = evaluate_line(line, &mut SiffraState::new()).expect_err("line should fail");

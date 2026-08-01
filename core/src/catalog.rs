@@ -122,7 +122,13 @@ fn functions() -> Vec<CatalogFunction> {
         examples,
     };
     vec![
-        f("Powers & logarithms", "sqrt", "sqrt(x)", "Square root of x.", vec![ex("sqrt(144)", "12")]),
+        f(
+            "Powers & logarithms",
+            "sqrt",
+            "sqrt(x)",
+            "Square root of x.",
+            vec![ex("sqrt(144)", "12")],
+        ),
         f(
             "Powers & logarithms",
             "root",
@@ -137,8 +143,20 @@ fn functions() -> Vec<CatalogFunction> {
             "Base-10 logarithm, or base-b when you write the base after an underscore.",
             vec![ex("log(1000)", "3"), ex("log_2(32)", "5")],
         ),
-        f("Powers & logarithms", "ln", "ln(x)", "Natural logarithm (base e).", vec![ex("ln(e)", "1")]),
-        f("Powers & logarithms", "exp", "exp(x)", "e raised to the power of x.", vec![ex("exp(1)", "2.718282")]),
+        f(
+            "Powers & logarithms",
+            "ln",
+            "ln(x)",
+            "Natural logarithm (base e).",
+            vec![ex("ln(e)", "1")],
+        ),
+        f(
+            "Powers & logarithms",
+            "exp",
+            "exp(x)",
+            "e raised to the power of x.",
+            vec![ex("exp(1)", "2.718282")],
+        ),
         f(
             "Rounding",
             "round",
@@ -308,14 +326,29 @@ fn functions() -> Vec<CatalogFunction> {
             "compound",
             "compound(principal, rate, periods)",
             "Compounds a principal at a per-period rate; an explanatory alias for fv.",
-            vec![ex(
-                "compound(1000 USD, 5%, 10)",
-                "1,628.894627 USD",
-            )],
+            vec![ex("compound(1000 USD, 5%, 10)", "1,628.894627 USD")],
         ),
-        f("Trigonometry", "sin", "sin(x)", "Sine of x (x in radians).", vec![ex("sin(pi / 2)", "1")]),
-        f("Trigonometry", "cos", "cos(x)", "Cosine of x (x in radians).", vec![ex("cos(0)", "1")]),
-        f("Trigonometry", "tan", "tan(x)", "Tangent of x (x in radians).", vec![ex("tan(pi / 4)", "1")]),
+        f(
+            "Trigonometry",
+            "sin",
+            "sin(x)",
+            "Sine of x (x in radians).",
+            vec![ex("sin(pi / 2)", "1")],
+        ),
+        f(
+            "Trigonometry",
+            "cos",
+            "cos(x)",
+            "Cosine of x (x in radians).",
+            vec![ex("cos(0)", "1")],
+        ),
+        f(
+            "Trigonometry",
+            "tan",
+            "tan(x)",
+            "Tangent of x (x in radians).",
+            vec![ex("tan(pi / 4)", "1")],
+        ),
         f(
             "Trigonometry",
             "sinh",

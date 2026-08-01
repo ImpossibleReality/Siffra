@@ -1,5 +1,5 @@
-use crate::representations::dimension::{BaseDimension, Dimensionality, TemperatureInterval};
 use crate::representations::Float;
+use crate::representations::dimension::{BaseDimension, Dimensionality, TemperatureInterval};
 
 /// An *absolute* (affine) temperature unit. Unlike every other unit in the
 /// system — which convert by a pure ratio — these carry an **offset**. The

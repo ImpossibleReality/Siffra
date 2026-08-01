@@ -165,8 +165,7 @@ fn state() -> &'static Mutex<State> {
 /// Installs a fixed rate table (`code -> units per 1 EUR`) and disables all
 /// disk/network access. For deterministic, offline tests.
 pub fn install_static_rates(pairs: &[(&str, f64)]) {
-    let mut rates: BTreeMap<String, f64> =
-        pairs.iter().map(|(k, v)| (k.to_string(), *v)).collect();
+    let mut rates: BTreeMap<String, f64> = pairs.iter().map(|(k, v)| (k.to_string(), *v)).collect();
     rates.insert(CANONICAL.to_string(), 1.0);
     state().lock().unwrap().override_rates = Some(rates);
 }
@@ -210,7 +209,12 @@ fn rate(code: &str) -> Option<Float> {
         spawn_refresh();
     }
 
-    state.table.as_ref()?.rates.get(code).and_then(|r| to_float(*r))
+    state
+        .table
+        .as_ref()?
+        .rates
+        .get(code)
+        .and_then(|r| to_float(*r))
 }
 
 /// Fetches fresh rates off the evaluation thread and installs them. On failure

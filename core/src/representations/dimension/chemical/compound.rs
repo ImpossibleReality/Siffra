@@ -11,9 +11,11 @@ impl Compound {
         parse_compound(formula)
     }
     pub fn particulate_mass(&self) -> Float {
-        self.0.iter().fold(Float::from(0), |total, (element, count)| {
-            &total + &(&element.atomic_mass() * &Float::from(*count))
-        })
+        self.0
+            .iter()
+            .fold(Float::from(0), |total, (element, count)| {
+                &total + &(&element.atomic_mass() * &Float::from(*count))
+            })
     }
 }
 

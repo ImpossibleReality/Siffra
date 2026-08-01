@@ -1,5 +1,5 @@
-use siffra::evaluation::{evaluate_line, SiffraState};
-use siffra::representations::{install_static_rates, Value};
+use siffra::evaluation::{SiffraState, evaluate_line};
+use siffra::representations::{Value, install_static_rates};
 
 fn display_value(value: Value) -> String {
     let (value, dimension) = value.into_parts();

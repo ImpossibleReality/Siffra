@@ -7,8 +7,7 @@ use std::sync::{Mutex, OnceLock};
 
 fn const_cache() -> &'static Mutex<Consts> {
     static CONST_CACHE: OnceLock<Mutex<Consts>> = OnceLock::new();
-    CONST_CACHE
-        .get_or_init(|| Mutex::new(Consts::new().expect("Failed to initialize constants")))
+    CONST_CACHE.get_or_init(|| Mutex::new(Consts::new().expect("Failed to initialize constants")))
 }
 
 const PRECISION: usize = 256;
@@ -24,11 +23,7 @@ impl Float {
         let mut cache = const_cache().lock().unwrap();
         let s = s.trim().replace('_', "").replace(',', "");
         let res = BigFloat::parse(&s, Radix::Dec, PRECISION, ROUNDING_MODE, &mut *cache);
-        if res.is_nan() {
-            Err(())
-        } else {
-            Ok(Self(res))
-        }
+        if res.is_nan() { Err(()) } else { Ok(Self(res)) }
     }
 
     pub fn pi() -> Self {

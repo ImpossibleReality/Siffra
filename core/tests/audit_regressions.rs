@@ -1,4 +1,4 @@
-use siffra::evaluation::{evaluate_line, SiffraState};
+use siffra::evaluation::{SiffraState, evaluate_line};
 use siffra::representations::Value;
 
 fn display_value(value: Value) -> String {

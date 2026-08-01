@@ -1,6 +1,6 @@
 //! End-to-end checks for parser and evaluator behavior.
 
-use siffra::evaluation::{evaluate_line, SiffraState};
+use siffra::evaluation::{SiffraState, evaluate_line};
 use siffra::representations::Value;
 
 fn display_value(val: Value) -> String {
@@ -192,7 +192,11 @@ fn torque_and_energy_do_not_collapse_into_each_other() {
     // Equal dimensionality does not erase deliberate display units.
     assert_eq!(one("5 N * 3 m"), "15 N*m");
     assert_eq!(one("5 J"), "5 J");
-    assert!(one("12 N in J").starts_with("ERR"), "got {}", one("12 N in J"));
+    assert!(
+        one("12 N in J").starts_with("ERR"),
+        "got {}",
+        one("12 N in J")
+    );
 }
 
 #[test]
