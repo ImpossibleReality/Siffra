@@ -23,7 +23,7 @@ use gpui::{
     ShapedLine, SharedString, Stateful, Styled, StyledText, TextRun, UTF16Selection, Window,
     canvas, div, point, prelude::FluentBuilder, px, quad, size,
 };
-use std::ops::Range;
+use std::{ops::Range, time::Duration};
 
 /// Emitted after a user edit changes the field's value.
 pub struct ValueChanged;
@@ -84,6 +84,9 @@ pub struct SingleLineInput {
     last_layout: Option<ShapedLine>,
     last_bounds: Option<Bounds<Pixels>>,
     focus_on_next_render: bool,
+    caret_visible: bool,
+    blink: Option<gpui::Task<()>>,
+    was_focused: bool,
 }
 
 impl EventEmitter<ValueChanged> for SingleLineInput {}
@@ -109,6 +112,9 @@ impl SingleLineInput {
             last_layout: None,
             last_bounds: None,
             focus_on_next_render: false,
+            caret_visible: true,
+            blink: None,
+            was_focused: false,
         }
     }
 
@@ -155,7 +161,7 @@ impl SingleLineInput {
 
     pub fn select_all(&mut self, cx: &mut Context<Self>) {
         self.text.select_all();
-        cx.notify();
+        self.reset_caret_blink(cx);
     }
 
     pub fn request_focus(&mut self, cx: &mut Context<Self>) {
@@ -165,6 +171,27 @@ impl SingleLineInput {
 
     fn emit_changed(&mut self, cx: &mut Context<Self>) {
         cx.emit(ValueChanged);
+        self.reset_caret_blink(cx);
+    }
+
+    fn reset_caret_blink(&mut self, cx: &mut Context<Self>) {
+        self.caret_visible = true;
+        self.blink = Some(cx.spawn(async move |input, cx| {
+            loop {
+                cx.background_executor()
+                    .timer(Duration::from_secs_f32(theme::CARET_BLINK_PERIOD / 2.0))
+                    .await;
+                if input
+                    .update(cx, |input, cx| {
+                        input.caret_visible = !input.caret_visible;
+                        cx.notify();
+                    })
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        }));
         cx.notify();
     }
 
@@ -239,6 +266,7 @@ impl SingleLineInput {
             anchor,
         });
         self.drag_to(offset, cx);
+        self.reset_caret_blink(cx);
         cx.stop_propagation();
     }
 
@@ -261,6 +289,17 @@ impl SingleLineInput {
         self.emit_changed(cx);
     }
 
+    /// Hands a horizontal arrow back to whatever the field is inside of when
+    /// there is no text for it to move a caret through, so an owner can use the
+    /// arrows for something of its own without stealing them from a query.
+    fn propagate_when_empty(&self, cx: &mut Context<Self>) -> bool {
+        let empty = self.text.content().is_empty();
+        if empty {
+            cx.propagate();
+        }
+        empty
+    }
+
     /// Moves the caret, or drags the loose end of a selection to the same place.
     fn go_to(&mut self, destination: usize, selecting: bool, cx: &mut Context<Self>) {
         if selecting {
@@ -268,7 +307,7 @@ impl SingleLineInput {
         } else {
             self.text.move_to(destination);
         }
-        cx.notify();
+        self.reset_caret_blink(cx);
     }
 
     /// Deletes back to `start`, or deletes the selection when there is one —
@@ -324,6 +363,9 @@ impl SingleLineInput {
     }
 
     fn left(&mut self, _: &Left, _: &mut Window, cx: &mut Context<Self>) {
+        if self.propagate_when_empty(cx) {
+            return;
+        }
         // Leaving a selection by the left arrow lands on its near edge rather
         // than a step further back.
         let selection = self.text.selection().clone();
@@ -336,6 +378,9 @@ impl SingleLineInput {
     }
 
     fn right(&mut self, _: &Right, _: &mut Window, cx: &mut Context<Self>) {
+        if self.propagate_when_empty(cx) {
+            return;
+        }
         let selection = self.text.selection().clone();
         let destination = if selection.is_empty() {
             self.text.next_boundary(self.text.caret_offset())
@@ -453,6 +498,13 @@ impl Render for SingleLineInput {
             focused: self.focus_handle.is_focused(window),
             empty: self.text.content().is_empty(),
         };
+        if state.focused && !self.was_focused {
+            self.reset_caret_blink(cx);
+        } else if !state.focused {
+            self.blink = None;
+            self.caret_visible = true;
+        }
+        self.was_focused = state.focused;
         let selection = self.text.selection().clone();
         let content = if state.empty {
             div()
@@ -514,6 +566,15 @@ impl Render for SingleLineInput {
             .on_action(cx.listener(Self::paste))
             .on_action(cx.listener(Self::undo))
             .on_action(cx.listener(Self::redo))
+            // A field that is only there to be read must not take the keyboard
+            // when it is pressed either: tracking focus would otherwise hand it
+            // over on the way down, before the owner has decided what the press
+            // means.
+            .capture_any_mouse_down(cx.listener(|input, _: &MouseDownEvent, window, _| {
+                if input.read_only {
+                    window.prevent_default();
+                }
+            }))
             .on_mouse_down(MouseButton::Left, cx.listener(Self::on_mouse_down))
             .on_mouse_move(cx.listener(Self::on_mouse_move))
             .on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
@@ -523,13 +584,14 @@ impl Render for SingleLineInput {
             canvas(
                 |_, _, _| (),
                 move |bounds, _, window, cx| {
-                    let (focus_handle, value, selection, caret) = {
+                    let (focus_handle, value, selection, caret, caret_visible) = {
                         let input = input.read(cx);
                         (
                             input.focus_handle.clone(),
                             SharedString::from(input.text.content().to_string()),
                             input.text.selection().clone(),
                             input.text.caret_offset(),
+                            input.caret_visible,
                         )
                     };
                     window.handle_input(
@@ -567,7 +629,7 @@ impl Render for SingleLineInput {
                     // is not an inline box between two separately shaped
                     // pieces of text. Painting it over one shaped line
                     // preserves kerning and does not push either neighbor.
-                    if focus_handle.is_focused(window) && selection.is_empty() {
+                    if focus_handle.is_focused(window) && caret_visible && selection.is_empty() {
                         window.paint_quad(quad(
                             Bounds::new(
                                 point(

@@ -5,6 +5,7 @@
 
 use crate::assets::icon;
 use crate::fuzzy;
+use crate::text_input::{Left, Right};
 use crate::theme;
 use crate::ui::code_block::{CodeBlockLine, CodeLineActivated, SelectableCodeLine, code_block};
 use crate::ui::modal::{ModalSize, body as modal_body, close_button, header, overlay, panel};
@@ -13,9 +14,9 @@ use crate::ui::tooltip::TextTooltip;
 use gpui::{
     Animation, AnimationExt, AnyElement, App, AppContext, Context, CursorStyle, Div, Entity,
     EntityId, EventEmitter, FocusHandle, Focusable, FontWeight, InteractiveElement, IntoElement,
-    KeyDownEvent, ListAlignment, ListState, MouseButton, MouseDownEvent, ParentElement, Render,
-    SharedString, Stateful, StatefulInteractiveElement, Styled, Subscription, Task, Transformation,
-    Window, div, list, prelude::FluentBuilder, px, radians, rgb, rgba, svg,
+    KeyDownEvent, ListAlignment, ListState, MouseButton, MouseDownEvent, ParentElement, Pixels,
+    Render, SharedString, Stateful, StatefulInteractiveElement, Styled, Subscription, Task,
+    Transformation, Window, div, list, prelude::FluentBuilder, px, radians, rgb, rgba, svg,
 };
 use siffra::catalog::{
     Catalog, CatalogConstant, CatalogExample, CatalogFunction, CatalogUnit, catalog,
@@ -33,6 +34,8 @@ enum Tab {
 }
 
 impl Tab {
+    const ALL: [Tab; 4] = [Tab::Overview, Tab::Functions, Tab::Constants, Tab::Units];
+
     fn label(self) -> &'static str {
         match self {
             Self::Overview => "Overview",
@@ -330,7 +333,7 @@ const OVERVIEW: &[OverviewCategory] = &[
 
 pub struct CloseHelp;
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 enum HelpRow {
     Category {
         tab: Tab,
@@ -477,6 +480,14 @@ impl HelpModal {
         }
     }
 
+    fn step_tab(&mut self, delta: isize, window: &mut Window, cx: &mut Context<Self>) {
+        let last = Tab::ALL.len() as isize - 1;
+        let index = (self.tab.index() as isize + delta).clamp(0, last) as usize;
+        if Tab::ALL[index] != self.tab {
+            self.set_tab(Tab::ALL[index], window, cx);
+        }
+    }
+
     fn set_tab(&mut self, tab: Tab, window: &mut Window, cx: &mut Context<Self>) {
         self.tab = tab;
         self.search.update(cx, |search, cx| {
@@ -537,7 +548,11 @@ impl HelpModal {
             serial: self.chevron_serial,
             started: Instant::now(),
         });
-        self.rebuild_non_search_rows();
+        self.replace_rows_preserving_scroll(non_search_rows(
+            self.tab,
+            &self.catalog,
+            &self.open_sections,
+        ));
         cx.notify();
     }
 
@@ -549,6 +564,12 @@ impl HelpModal {
     fn replace_rows(&mut self, rows: Vec<HelpRow>) {
         self.rows = rows;
         self.list_state.reset(self.rows.len());
+    }
+
+    fn replace_rows_preserving_scroll(&mut self, rows: Vec<HelpRow>) {
+        let (old_range, new_count) = changed_rows(&self.rows, &rows);
+        self.list_state.splice(old_range, new_count);
+        self.rows = rows;
     }
 
     fn rebuild_non_search_rows(&mut self) {
@@ -590,14 +611,14 @@ impl HelpModal {
         }));
     }
 
-    fn render_tab(&self, tab: Tab, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_tab(&self, tab: Tab, font_size: Pixels, cx: &mut Context<Self>) -> impl IntoElement {
         let active = self.tab == tab;
         div()
             .id(("help-tab", tab.index()))
             .px(px(0.7 * theme::REM))
             .py(px(0.25 * theme::REM))
-            .text_size(px(0.8 * theme::REM))
-            .line_height(px(theme::REM))
+            .text_size(font_size * 0.8)
+            .line_height(font_size)
             .font_weight(FontWeight::SEMIBOLD)
             .text_color(if active { rgb(0xe6ebee) } else { rgb(0x8a9196) })
             .when(active, |pill| pill.bg(rgb(0x383d46)))
@@ -617,7 +638,8 @@ impl HelpModal {
         tab: Tab,
         category: &str,
         count: usize,
-        index: usize,
+        category_index: usize,
+        font_size: Pixels,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let open = self.is_open(tab, category);
@@ -660,13 +682,13 @@ impl HelpModal {
                 .into_any_element()
         };
         div()
-            .id(("help-category", index))
+            .id(("help-category", category_index))
             .w_full()
             .py(px(0.6 * theme::REM))
             .flex()
             .items_center()
-            .text_size(px(0.72 * theme::REM))
-            .line_height(px(0.9 * theme::REM))
+            .text_size(font_size * 0.72)
+            .line_height(font_size * 0.9)
             .font_weight(FontWeight::BOLD)
             .text_color(rgb(0x9aa1a8))
             .cursor(CursorStyle::Arrow)
@@ -693,14 +715,14 @@ impl HelpModal {
             .child(
                 div()
                     .ml_auto()
-                    .text_size(px(0.7 * theme::REM))
+                    .text_size(font_size * 0.7)
                     .font_weight(FontWeight::SEMIBOLD)
                     .text_color(rgb(0x5c636e))
                     .child(count.to_string()),
             )
     }
 
-    fn render_overview_entry(&self, entry: &OverviewEntry) -> impl IntoElement {
+    fn render_overview_entry(&self, entry: &OverviewEntry, font_size: Pixels) -> impl IntoElement {
         div()
             .px(px(0.2 * theme::REM))
             .pt(px(0.5 * theme::REM))
@@ -708,17 +730,18 @@ impl HelpModal {
             .child(
                 div()
                     .mb(px(0.2 * theme::REM))
-                    .text_size(px(0.9 * theme::REM))
+                    .text_size(font_size * 0.9)
                     .font_weight(FontWeight::SEMIBOLD)
                     .text_color(rgb(0xe6ebee))
                     .child(entry.title),
             )
-            .child(entry_description(entry.description))
+            .child(entry_description(entry.description, font_size))
             .child(help_example_block(
                 entry
                     .examples
                     .iter()
                     .map(|line| (self.example_input(line.input), line.result)),
+                font_size,
             ))
     }
 
@@ -727,6 +750,7 @@ impl HelpModal {
         title: &str,
         description: &str,
         examples: &[CatalogExample],
+        font_size: Pixels,
     ) -> impl IntoElement {
         div()
             .px(px(0.2 * theme::REM))
@@ -736,18 +760,21 @@ impl HelpModal {
                 div()
                     .mb(px(0.35 * theme::REM))
                     .font_family(self.mono_family())
-                    .text_size(px(0.85 * theme::REM))
+                    .text_size(font_size * 0.85)
                     .font_weight(FontWeight::SEMIBOLD)
                     .text_color(rgb(0x90bee3))
                     .child(title.replace("  ·  ", " · ")),
             )
-            .child(entry_description(description))
-            .child(help_example_block(examples.iter().map(|line| {
-                (self.example_input(&line.input), Some(line.result.as_str()))
-            })))
+            .child(entry_description(description, font_size))
+            .child(help_example_block(
+                examples
+                    .iter()
+                    .map(|line| (self.example_input(&line.input), Some(line.result.as_str()))),
+                font_size,
+            ))
     }
 
-    fn render_unit(&self, unit: &CatalogUnit) -> impl IntoElement {
+    fn render_unit(&self, unit: &CatalogUnit, font_size: Pixels) -> impl IntoElement {
         div()
             .w_full()
             .px(px(0.2 * theme::REM))
@@ -766,7 +793,7 @@ impl HelpModal {
                             .flex_none()
                             .min_w(px(3.2 * theme::REM))
                             .font_family(self.mono_family())
-                            .text_size(px(0.82 * theme::REM))
+                            .text_size(font_size * 0.82)
                             .font_weight(FontWeight::SEMIBOLD)
                             .text_color(rgb(0xdec4ab))
                             .child(unit.symbol.clone()),
@@ -776,7 +803,7 @@ impl HelpModal {
                             .min_w_0()
                             .flex_shrink()
                             .whitespace_nowrap()
-                            .text_size(px(0.82 * theme::REM))
+                            .text_size(font_size * 0.82)
                             .text_color(rgb(0xcdd4d7))
                             .child(unit.name.clone()),
                     )
@@ -795,8 +822,8 @@ impl HelpModal {
                             .border_1()
                             .border_color(rgb(0x33434f))
                             .rounded(px(3.0))
-                            .text_size(px(0.62 * theme::REM))
-                            .line_height(px(0.93 * theme::REM))
+                            .text_size(font_size * 0.62)
+                            .line_height(font_size * 0.93)
                             .font_weight(FontWeight::SEMIBOLD)
                             .text_color(rgb(0x90bee3))
                             .cursor(CursorStyle::Arrow)
@@ -813,22 +840,28 @@ impl HelpModal {
                     .flex_1()
                     .truncate()
                     .text_right()
-                    .text_size(px(0.75 * theme::REM))
+                    .text_size(font_size * 0.75)
                     .text_color(rgb(0x6b7280))
                     .child(unit.aliases.join(", "))
             }))
     }
 
-    fn render_function(&self, function: &CatalogFunction) -> impl IntoElement {
+    fn render_function(&self, function: &CatalogFunction, font_size: Pixels) -> impl IntoElement {
         self.render_catalog_entry(
             &function.signature,
             &function.description,
             &function.examples,
+            font_size,
         )
     }
 
-    fn render_constant(&self, constant: &CatalogConstant) -> impl IntoElement {
-        self.render_catalog_entry(&constant.name, &constant.description, &constant.examples)
+    fn render_constant(&self, constant: &CatalogConstant, font_size: Pixels) -> impl IntoElement {
+        self.render_catalog_entry(
+            &constant.name,
+            &constant.description,
+            &constant.examples,
+            font_size,
+        )
     }
 
     fn mono_family(&self) -> SharedString {
@@ -842,8 +875,9 @@ impl HelpModal {
             .clone()
     }
 
-    fn render_row(&self, index: usize, cx: &mut Context<Self>) -> AnyElement {
-        let Some(row) = self.rows.get(index).cloned() else {
+    fn render_row(&self, row_index: usize, window: &Window, cx: &mut Context<Self>) -> AnyElement {
+        let font_size = help_font_size(window);
+        let Some(row) = self.rows.get(row_index).cloned() else {
             return div().into_any_element();
         };
         match row {
@@ -857,52 +891,60 @@ impl HelpModal {
                 .when(border_top, |section| {
                     section.border_t_1().border_color(rgb(0x2b2e36))
                 })
-                .child(self.render_category_header(tab, &name, count, index, cx))
+                .child(self.render_category_header(tab, &name, count, index, font_size, cx))
                 .into_any_element(),
             HelpRow::OverviewEntry(index) => overview_entry(index)
-                .map(|entry| self.render_overview_entry(entry).into_any_element())
+                .map(|entry| {
+                    self.render_overview_entry(entry, font_size)
+                        .into_any_element()
+                })
                 .unwrap_or_else(|| div().into_any_element()),
             HelpRow::Function(index) => self
                 .catalog
                 .functions
                 .get(index)
-                .map(|function| self.render_function(function).into_any_element())
+                .map(|function| self.render_function(function, font_size).into_any_element())
                 .unwrap_or_else(|| div().into_any_element()),
             HelpRow::Constant(index) => self
                 .catalog
                 .constants
                 .get(index)
-                .map(|constant| self.render_constant(constant).into_any_element())
+                .map(|constant| self.render_constant(constant, font_size).into_any_element())
                 .unwrap_or_else(|| div().into_any_element()),
             HelpRow::Unit(index) => self
                 .catalog
                 .units
                 .get(index)
-                .map(|unit| self.render_unit(unit).into_any_element())
+                .map(|unit| self.render_unit(unit, font_size).into_any_element())
                 .unwrap_or_else(|| div().into_any_element()),
             HelpRow::SearchUnit(index) => self
                 .searchable_units
                 .get(index)
-                .map(|unit| self.render_unit(unit).into_any_element())
+                .map(|unit| self.render_unit(unit, font_size).into_any_element())
                 .unwrap_or_else(|| div().into_any_element()),
             HelpRow::Gap => div().h(px(0.5 * theme::REM)).flex_none().into_any_element(),
-            HelpRow::Empty => empty_state().into_any_element(),
+            HelpRow::Empty => empty_state(font_size).into_any_element(),
         }
     }
 }
 
 impl Render for HelpModal {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let font_size = help_font_size(window);
         let content = modal_body("help-body").child(
             list(
                 self.list_state.clone(),
-                cx.processor(|modal, index: usize, _, cx| modal.render_row(index, cx)),
+                cx.processor(|modal, index: usize, window, cx| modal.render_row(index, window, cx)),
             )
             .size_full(),
         );
 
         overlay("help-overlay")
             .capture_key_down(cx.listener(Self::handle_overlay_key_down))
+            // An empty search field passes the arrows on rather than moving a
+            // caret it has no text for, which is what walks the tabs.
+            .on_action(cx.listener(|modal, _: &Left, window, cx| modal.step_tab(-1, window, cx)))
+            .on_action(cx.listener(|modal, _: &Right, window, cx| modal.step_tab(1, window, cx)))
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(|modal, _: &MouseDownEvent, _, cx| {
@@ -912,6 +954,8 @@ impl Render for HelpModal {
             )
             .child(
                 panel("help-panel", ModalSize::new(px(640.0), px(760.0)))
+                    .text_size(font_size * 0.85)
+                    .line_height(font_size * 1.15)
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(|_, _: &MouseDownEvent, _, cx| {
@@ -924,10 +968,10 @@ impl Render for HelpModal {
                                 div()
                                     .flex()
                                     .gap(px(0.35 * theme::REM))
-                                    .child(self.render_tab(Tab::Overview, cx))
-                                    .child(self.render_tab(Tab::Functions, cx))
-                                    .child(self.render_tab(Tab::Constants, cx))
-                                    .child(self.render_tab(Tab::Units, cx)),
+                                    .child(self.render_tab(Tab::Overview, font_size, cx))
+                                    .child(self.render_tab(Tab::Functions, font_size, cx))
+                                    .child(self.render_tab(Tab::Constants, font_size, cx))
+                                    .child(self.render_tab(Tab::Units, font_size, cx)),
                             )
                             .child(close_button("help-close").on_click(cx.listener(
                                 |modal, _, _, cx| {
@@ -1199,34 +1243,37 @@ fn search_field_chrome(field: Stateful<Div>, state: FieldState) -> Stateful<Div>
             rgb(0x33363f)
         })
         .rounded(px(0.4 * theme::REM))
-        .text_size(px(0.85 * theme::REM))
-        .line_height(px(1.15 * theme::REM))
         .text_color(rgb(0xcdd4d7))
         .cursor(CursorStyle::IBeam)
 }
 
-fn entry_description(text: &str) -> impl IntoElement {
+fn help_font_size(window: &Window) -> Pixels {
+    theme::font_size_for_window(window.viewport_size().width)
+}
+
+fn entry_description(text: &str, font_size: Pixels) -> impl IntoElement {
     div()
         .mb(px(0.5 * theme::REM))
-        .text_size(px(0.82 * theme::REM))
-        .line_height(px(1.23 * theme::REM))
+        .text_size(font_size * 0.82)
+        .line_height(font_size * 1.23)
         .font_weight(FontWeight::NORMAL)
         .text_color(rgb(0xa9b0b6))
         .child(text.to_string())
 }
 
-fn empty_state() -> impl IntoElement {
+fn empty_state(font_size: Pixels) -> impl IntoElement {
     div()
         .px(px(0.5 * theme::REM))
         .py(px(1.5 * theme::REM))
         .text_center()
-        .text_size(px(0.85 * theme::REM))
+        .text_size(font_size * 0.85)
         .text_color(rgb(0x6b7280))
         .child("No matches.")
 }
 
 fn help_example_block<'a>(
     lines: impl IntoIterator<Item = (Entity<SelectableCodeLine>, Option<&'a str>)>,
+    font_size: Pixels,
 ) -> impl IntoElement {
     let lines: Vec<_> = lines.into_iter().collect();
     let id = lines
@@ -1240,7 +1287,23 @@ fn help_example_block<'a>(
             Some(result) => CodeBlockLine::with_result(input, result.to_string()),
             None => CodeBlockLine::new(input),
         }),
+        font_size,
     )
+}
+
+fn changed_rows(old: &[HelpRow], new: &[HelpRow]) -> (std::ops::Range<usize>, usize) {
+    let prefix = old
+        .iter()
+        .zip(new)
+        .take_while(|(old, new)| old == new)
+        .count();
+    let suffix = old[prefix..]
+        .iter()
+        .rev()
+        .zip(new[prefix..].iter().rev())
+        .take_while(|(old, new)| old == new)
+        .count();
+    (prefix..old.len() - suffix, new.len() - prefix - suffix)
 }
 
 fn searchable_units(catalog: &Catalog) -> Vec<CatalogUnit> {
@@ -1348,5 +1411,17 @@ mod tests {
                 .count(),
             17
         );
+    }
+
+    #[test]
+    fn collapsing_a_section_splices_only_its_contents() {
+        let catalog = catalog();
+        let open = default_open_sections(&catalog);
+        let before = non_search_rows(Tab::Overview, &catalog, &open);
+        let mut closed = open;
+        closed.remove(&HelpModal::section_key(Tab::Overview, OVERVIEW[0].name));
+        let after = non_search_rows(Tab::Overview, &catalog, &closed);
+
+        assert_eq!(changed_rows(&before, &after), (1..6, 0));
     }
 }

@@ -38,7 +38,9 @@ use text_input::{
     Left, Paste, Redo, Right, SelectAll, SelectEnd, SelectHome, SelectLeft, SelectRight,
     SelectWordLeft, SelectWordRight, Undo, WordLeft, WordRight,
 };
-use workspace::{NameDocument, NewDocument, ToggleSearch, Workspace};
+use workspace::{
+    NameDocument, NewDocument, ToggleAlwaysOnTop, ToggleHelp, ToggleSearch, Workspace,
+};
 
 /// Preferred monospace families, in fallback order.
 const MONO_FAMILIES: &[&str] = &[
@@ -131,7 +133,14 @@ fn key_bindings() -> Vec<KeyBinding> {
         // keyboard happens to be — including a modal or the name field.
         KeyBinding::new("cmd-k", ToggleSearch, None),
         KeyBinding::new("cmd-/", ToggleSearch, None),
+        // Written as the character rather than as ⇧ and the key it is typed
+        // with: macOS reports the shifted character for a ⌘ chord, so ⌘⇧/ on a
+        // US layout arrives as `cmd-?` — and on a layout where ? is typed some
+        // other way, that is what arrives too. It is also what the Help menu
+        // then advertises, as ⌘? rather than ⇧⌘/.
+        KeyBinding::new("cmd-?", ToggleHelp, None),
         KeyBinding::new("cmd-n", NewDocument, None),
+        KeyBinding::new("cmd-p", ToggleAlwaysOnTop, None),
         KeyBinding::new("cmd-s", NameDocument, None),
         // The app's own, which the menu bar reads back to label its items. Only
         // the first binding for an action is shown, so ⌘K is what Find advertises.
@@ -151,6 +160,9 @@ fn main() {
         menus::register_actions(cx);
         // After the bindings, since the items take their shortcuts from them.
         cx.set_menus(menus::app_menus());
+        // And after the menus, since this takes back the ⌘? macOS would
+        // otherwise have claimed for the Help menu's search field.
+        platform::detach_native_help_menu();
 
         // Quitting is one of the moments a calculation is written, since what
         // was typed in the last fraction of a second has not been saved yet.
@@ -288,6 +300,14 @@ mod tests {
         assert_eq!(
             action_for("cmd-k", &["SiffraInput"]),
             Some("siffra::ToggleSearch")
+        );
+        assert_eq!(
+            action_for("cmd-?", &["SiffraInput"]),
+            Some("siffra::ToggleHelp")
+        );
+        assert_eq!(
+            action_for("cmd-p", &["SiffraInput"]),
+            Some("siffra::ToggleAlwaysOnTop")
         );
         assert_eq!(
             action_for("cmd-w", &["SiffraInput"]),

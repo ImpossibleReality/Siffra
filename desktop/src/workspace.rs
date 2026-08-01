@@ -5,8 +5,14 @@
 //! the typing on it stops, and again whenever it is about to be left — switching
 //! away from it, closing the window, quitting. Naming a calculation is what
 //! "saving" one means here, which is why ⌘S puts the caret in its name.
+//!
+//! What is kept, and where, follows from what a calculation has. Content is
+//! written to the store. An empty one that has been named is held in memory, so
+//! it can still be switched back to, but there is nothing worth writing. An
+//! empty one that has never been named is nothing at all: it goes the moment it
+//! is left.
 
-use crate::documents::{Document, DocumentStore, database_path};
+use crate::documents::{Document, DocumentStore, database_path, now_millis};
 use crate::editor::layout::Fonts;
 use crate::editor::{ContentChanged, Editor};
 use crate::help::{CloseHelp, HelpModal};
@@ -39,7 +45,15 @@ pub struct Workspace {
     /// `None` when there is nowhere to keep documents, which leaves the session
     /// working but unsaved rather than refusing to open at all.
     store: Option<DocumentStore>,
-    current: Option<Document>,
+    /// The calculation on screen. There is always one, even when it is empty and
+    /// nothing is keeping it yet.
+    current: Document,
+    /// Whether the open calculation has a record in the store, which is what
+    /// decides whether emptying it has anything to clean up.
+    current_on_disk: bool,
+    /// Named calculations with nothing in them. There is nothing to write, but
+    /// the name is the user's, so they remain switchable to for the session.
+    remembered: Vec<Document>,
     editor: Entity<Editor>,
     toolbar: Entity<Toolbar>,
     help: Entity<HelpModal>,
@@ -67,8 +81,8 @@ impl Workspace {
         let subscriptions = vec![
             cx.subscribe_in(&toolbar, window, Self::on_toolbar_event),
             cx.subscribe_in(&search, window, Self::on_search_event),
-            cx.subscribe(&help, |workspace, _, _: &CloseHelp, cx| {
-                workspace.set_help_open(false, cx);
+            cx.subscribe_in(&help, window, |workspace, _, _: &CloseHelp, window, cx| {
+                workspace.set_help_open(false, window, cx);
             }),
             cx.subscribe(&editor, |workspace, _, _: &ContentChanged, cx| {
                 workspace.content_changed(cx);
@@ -78,6 +92,18 @@ impl Workspace {
                 if !window.is_window_active() {
                     workspace.flush_save(cx);
                 }
+            }),
+            // A focused element can leave without anything taking its place: a
+            // modal closes, or a rename is ended by a click somewhere that
+            // takes no focus of its own. What is left is not merely a missing
+            // caret. An action is dispatched along the path of what has focus,
+            // so an empty path leaves the window's own shortcuts — and the menu
+            // items that stand for them — with nowhere to be delivered, which
+            // is why they stop working and grey out. Whatever should hold the
+            // keyboard takes it back here, so nothing in the window is ever
+            // left focusless for longer than the frame it happened in.
+            cx.on_focus_lost(window, |workspace, window, cx| {
+                workspace.focus_frontmost(window, cx);
             }),
         ];
         // Flush before allowing the window to close.
@@ -92,7 +118,9 @@ impl Workspace {
         let store = database_path().and_then(|path| DocumentStore::open(&path).ok());
         let mut workspace = Self {
             store,
-            current: None,
+            current: Document::new(0, now_millis()),
+            current_on_disk: false,
+            remembered: Vec::new(),
             editor,
             toolbar,
             help,
@@ -106,13 +134,8 @@ impl Workspace {
             _subscriptions: subscriptions,
         };
 
-        if let Some(document) = workspace
-            .store
-            .as_ref()
-            .and_then(|store| store.open_latest().ok().flatten())
-        {
-            workspace.show(document, cx);
-        }
+        // Siffra opens on a blank calculation rather than the last one edited.
+        workspace.show_blank(cx);
         workspace
     }
 
@@ -126,17 +149,18 @@ impl Workspace {
         self.flush_save(cx);
     }
 
-    /// Switches the editor to `document`, writing any pending edits to the one
-    /// being left first.
-    fn show(&mut self, document: Document, cx: &mut Context<Self>) {
-        self.flush_save(cx);
+    /// Puts `document` on screen. Whatever was open is left to the caller, which
+    /// has either written it or deliberately let it go. `on_disk` says whether
+    /// the store already holds the one arriving.
+    fn open_in_editor(&mut self, document: Document, on_disk: bool, cx: &mut Context<Self>) {
         self.editor.update(cx, |editor, cx| {
             editor.set_document(&document.content, document.cursor, cx);
         });
         self.toolbar.update(cx, |toolbar, cx| {
-            toolbar.set_title(document.title.clone(), cx);
+            toolbar.set_title(document.display_title(), cx);
         });
-        self.current = Some(document);
+        self.current = document;
+        self.current_on_disk = on_disk;
         self.search_open = false;
         cx.notify();
     }
@@ -144,14 +168,18 @@ impl Workspace {
     fn open_document(&mut self, id: u64, cx: &mut Context<Self>) {
         // Flush before reading the next document so an autosave cannot race it.
         self.flush_save(cx);
-        let Some(store) = self.store.as_ref() else {
-            return;
-        };
-        let Ok(Some(document)) = store.get(id) else {
-            return;
-        };
-        store.set_last_opened(id).ok();
-        self.show(document, cx);
+        if let Some(remembered) = self
+            .remembered
+            .iter()
+            .find(|document| document.id == id)
+            .cloned()
+        {
+            self.open_in_editor(remembered, false, cx);
+        } else if let Some(store) = self.store.as_ref()
+            && let Ok(Some(document)) = store.get(id)
+        {
+            self.open_in_editor(document, true, cx);
+        }
     }
 
     /// Creates a blank calculation and puts the caret at the end of it, ready to
@@ -162,54 +190,64 @@ impl Workspace {
         self.focus_editor_end(window, cx);
     }
 
-    /// Starts an in-memory calculation. It becomes a saved document only after
-    /// the editor contains non-whitespace content.
+    /// Starts an empty, unnamed calculation. Nothing is keeping it: it reaches
+    /// the store once it has content, and memory once it has a name.
+    ///
+    /// Pending edits are dropped rather than written, so this can also stand in
+    /// for a calculation that has just been deleted.
     fn show_blank(&mut self, cx: &mut Context<Self>) {
+        let created_at = now_millis();
+        let document = Document::new(self.unused_id(created_at), created_at);
         self.discard_pending_save();
-        self.current = None;
-        self.editor.update(cx, |editor, cx| {
-            editor.set_document("", 0, cx);
-        });
-        self.toolbar.update(cx, |toolbar, cx| {
-            toolbar.set_title("", cx);
-        });
-        self.search_open = false;
-        cx.notify();
+        self.open_in_editor(document, false, cx);
     }
 
-    fn rename_document(&mut self, title: String, cx: &mut Context<Self>) {
-        let Some((store, current)) = self.store.as_ref().zip(self.current.as_ref()) else {
-            return;
-        };
-        let Ok(Some(renamed)) = store.rename(current.id, &title) else {
-            return;
-        };
-        self.toolbar.update(cx, |toolbar, cx| {
-            toolbar.set_title(renamed.title.clone(), cx);
-        });
-        self.current = Some(renamed);
-        cx.notify();
-    }
-
-    /// Deletes a calculation. Deleting the open one leaves nothing to show, so a
-    /// fresh blank calculation takes its place and the search modal closes.
-    fn delete_document(&mut self, id: u64, cx: &mut Context<Self>) {
-        let open = self
-            .current
+    /// An id nothing else is using — neither a stored calculation nor one being
+    /// held in memory.
+    fn unused_id(&self, created_at: i64) -> u64 {
+        let preferred = created_at.max(0) as u64;
+        let mut id = self
+            .store
             .as_ref()
-            .is_some_and(|current| current.id == id);
-        let deleted = self
+            .and_then(|store| store.reserve_id(preferred).ok())
+            .unwrap_or(preferred);
+        while self.current.id == id || self.remembered.iter().any(|held| held.id == id) {
+            id += 1;
+        }
+        id
+    }
+
+    /// Names the open calculation, or takes its name away when the field is left
+    /// blank. A name is enough on its own to keep an empty calculation; losing
+    /// one is enough to let it go.
+    fn rename_document(&mut self, title: String, cx: &mut Context<Self>) {
+        self.current.set_title(&title);
+        let shown = self.current.display_title();
+        self.toolbar
+            .update(cx, |toolbar, cx| toolbar.set_title(shown, cx));
+        self.persist_current();
+        self.refresh_search(cx);
+        cx.notify();
+    }
+
+    /// Deletes a calculation, wherever it is being kept. Deleting the open one
+    /// leaves nothing to show, so a fresh blank calculation takes its place and
+    /// the search modal closes.
+    fn delete_document(&mut self, id: u64, cx: &mut Context<Self>) {
+        let held = self.remembered.iter().any(|document| document.id == id);
+        self.remembered.retain(|document| document.id != id);
+        let stored = self
             .store
             .as_ref()
             .is_some_and(|store| store.delete(id).is_ok());
-        if !deleted {
+        if !held && !stored {
             return;
         }
 
-        if open {
-            // Saving recreates a missing record, so the open document has to be
-            // let go of entirely: both the edits waiting to be written and the
-            // caret, which on its own would be enough to write the record back.
+        if self.current.id == id {
+            // Saving writes the whole record back, so the open document has to
+            // be let go of entirely: both the edits waiting to be written and
+            // the caret, which on its own would be enough to recreate it.
             self.show_blank(cx);
         } else {
             self.refresh_search(cx);
@@ -227,64 +265,49 @@ impl Workspace {
         }));
     }
 
-    /// Writes what is pending, if anything is. The caret travels with the text,
-    /// so a calculation reopens where it was left — including when only the caret
-    /// moved.
+    /// Takes what is pending into the open calculation and keeps it wherever it
+    /// now belongs. The caret travels with the text, so a calculation reopens
+    /// where it was left — including when only the caret moved.
+    ///
+    /// Moving the caret is not an edit: the edit time only advances when the
+    /// text itself changed, so merely reading a calculation doesn't reorder the
+    /// search list.
     fn flush_save(&mut self, cx: &mut Context<Self>) {
         self.save_timer = None;
-        let Some(store) = self.store.as_ref() else {
-            return;
-        };
-
         let cursor = self.editor.read(cx).cursor();
-        if self.unsaved.is_none()
-            && self
-                .current
-                .as_ref()
-                .is_none_or(|current| cursor == current.cursor)
+        let content = self.unsaved.take();
+        if content.is_none() && cursor == self.current.cursor {
+            return;
+        }
+
+        if let Some(content) = content
+            && content != self.current.content
         {
-            return;
+            self.current.content = content;
+            self.current.updated_at = now_millis();
+        }
+        self.current.cursor = cursor;
+        self.persist_current();
+    }
+
+    /// Keeps the open calculation wherever it now belongs: the store while it
+    /// has content, memory while it has only a name, and nowhere at all while it
+    /// has neither.
+    fn persist_current(&mut self) {
+        if let Some(store) = self.store.as_ref() {
+            if self.current.is_empty() {
+                if self.current_on_disk && store.delete(self.current.id).is_ok() {
+                    self.current_on_disk = false;
+                }
+            } else if store.put(&self.current).is_ok() {
+                self.current_on_disk = true;
+            }
         }
 
-        let content = self.unsaved.take().unwrap_or_else(|| {
-            self.current
-                .as_ref()
-                .map_or_else(String::new, |current| current.content.clone())
-        });
-
-        if content.trim().is_empty() {
-            if let Some(current) = self.current.take() {
-                if store.delete(current.id).is_err() {
-                    self.current = Some(current);
-                    self.unsaved = Some(content);
-                    return;
-                }
-            }
-            self.toolbar.update(cx, |toolbar, cx| {
-                toolbar.set_title("", cx);
-            });
-            return;
-        }
-
-        let was_new = self.current.is_none();
-        let saved = match self.current.as_ref() {
-            Some(current) => store.save(current.id, &content, cursor),
-            None => store.create(&content).and_then(|created| {
-                if cursor == 0 {
-                    Ok(created)
-                } else {
-                    store.save(created.id, &content, cursor)
-                }
-            }),
-        };
-        if let Ok(saved) = saved {
-            store.set_last_opened(saved.id).ok();
-            if was_new {
-                self.toolbar.update(cx, |toolbar, cx| {
-                    toolbar.set_title(saved.title.clone(), cx);
-                });
-            }
-            self.current = Some(saved);
+        self.remembered
+            .retain(|document| document.id != self.current.id);
+        if self.current.is_empty() && self.current.is_worth_keeping() {
+            self.remembered.push(self.current.clone());
         }
     }
 
@@ -295,24 +318,33 @@ impl Workspace {
         self.unsaved = None;
     }
 
-    fn set_help_open(&mut self, open: bool, cx: &mut Context<Self>) {
+    /// Opens or closes the help panel. Closing hands the keyboard straight back
+    /// to the calculation, which is where typing carries on from — the panel's
+    /// own field goes with the panel.
+    fn set_help_open(&mut self, open: bool, window: &mut Window, cx: &mut Context<Self>) {
         self.help_open = open;
         self.toolbar
             .update(cx, |toolbar, cx| toolbar.set_help_open(open, cx));
         if open {
             self.help.update(cx, HelpModal::open);
+        } else {
+            self.focus_editor(window, cx);
         }
         cx.notify();
     }
 
-    /// Every saved calculation, with whatever is being typed written first so the
-    /// list shows it.
+    /// Every calculation worth switching to — stored and remembered alike — with
+    /// whatever is being typed written first so the list shows it.
     fn saved_documents(&mut self, cx: &mut Context<Self>) -> Vec<Document> {
         self.flush_save(cx);
-        self.store
+        let mut documents = self
+            .store
             .as_ref()
             .and_then(|store| store.list().ok())
-            .unwrap_or_default()
+            .unwrap_or_default();
+        documents.extend(self.remembered.iter().cloned());
+        documents.sort_by_key(|document| std::cmp::Reverse(document.updated_at));
+        documents
     }
 
     fn open_search(&mut self, cx: &mut Context<Self>) {
@@ -347,8 +379,15 @@ impl Workspace {
         self.editor.update(cx, |editor, _| editor.focus(window));
     }
 
+    /// Hands the keyboard to whatever is in front of the calculation, or to the
+    /// calculation when nothing is. The same order the window itself is focused
+    /// in, so recovering focus lands where opening the window would have put it.
+    fn focus_frontmost(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.focus_handle(cx).focus(window);
+    }
+
     /// Hands the keyboard back with the caret at the end, which is where typing
-    /// carries on from after a calculation is created or named.
+    /// carries on from after a calculation is created.
     fn focus_editor_end(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.editor
             .update(cx, |editor, cx| editor.focus_end(window, cx));
@@ -366,10 +405,15 @@ impl Workspace {
             ToolbarEvent::OpenSearch => self.open_search(cx),
             ToolbarEvent::ToggleHelp => {
                 let open = !self.help_open;
-                self.set_help_open(open, cx);
+                self.set_help_open(open, window, cx);
             }
             ToolbarEvent::Rename(title) => self.rename_document(title.clone(), cx),
-            ToolbarEvent::NameEditingFinished => self.focus_editor_end(window, cx),
+            // The editor listens for this one itself; the bar needs nothing of
+            // the workspace to start a rename.
+            ToolbarEvent::NameEditingStarted => {}
+            // Naming is an aside from typing, so the caret is left where the
+            // rename interrupted it rather than moved to the end.
+            ToolbarEvent::NameEditingFinished => self.focus_editor(window, cx),
         }
     }
 
@@ -418,9 +462,9 @@ impl Workspace {
     }
 
     /// The Help menu's way to the panel the bar's `?` opens.
-    fn toggle_help(&mut self, _: &ToggleHelp, _: &mut Window, cx: &mut Context<Self>) {
+    fn toggle_help(&mut self, _: &ToggleHelp, window: &mut Window, cx: &mut Context<Self>) {
         let open = !self.help_open;
-        self.set_help_open(open, cx);
+        self.set_help_open(open, window, cx);
     }
 
     /// The View menu's way to the pin, which is the toolbar's to hold: the

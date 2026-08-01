@@ -515,7 +515,8 @@ fn rows_for(query: &str, all: &[Document]) -> Vec<Row> {
     let mut by_content: Vec<(Row, i32)> = Vec::new();
 
     for document in all {
-        if let Some(score) = fuzzy::score(query, &document.title) {
+        // An unnamed calculation is matched on the date it shows instead.
+        if let Some(score) = fuzzy::score(query, &document.display_title()) {
             by_name.push((row_at(document, Vec::new(), now), score));
             continue;
         }
@@ -563,7 +564,7 @@ fn rows_for(query: &str, all: &[Document]) -> Vec<Row> {
 fn row_at(document: &Document, lines: Vec<MatchLine>, now: i64) -> Row {
     Row {
         id: document.id,
-        title: SharedString::from(document.title.clone()),
+        title: SharedString::from(document.display_title()),
         edited: SharedString::from(relative_time(document.updated_at, now)),
         lines,
     }
@@ -576,7 +577,7 @@ mod tests {
     fn document(id: u64, title: &str, content: &str) -> Document {
         Document {
             id,
-            title: title.to_string(),
+            title: Some(title.to_string()),
             content: content.to_string(),
             cursor: 0,
             created_at: 0,

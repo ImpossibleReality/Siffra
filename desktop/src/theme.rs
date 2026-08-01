@@ -31,7 +31,7 @@ pub const RULER_GAP_LEFT: f32 = 10.0;
 pub const RULER_GAP_RIGHT: f32 = 5.0;
 
 /// Rulers are hidden when the two columns cannot read separately.
-pub const RULER_MIN_WINDOW_WIDTH: f32 = 700.0;
+pub const RULER_MIN_WINDOW_WIDTH: f32 = 500.0;
 
 /// Heading rule geometry in the gutter.
 pub const HEADER_RULE_OFFSET: f32 = 0.55 * REM;

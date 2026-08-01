@@ -19,7 +19,7 @@ use crate::text_input::{
     SelectWordLeft, SelectWordRight, TextBuffer, Undo, WordLeft, WordRight,
 };
 use crate::theme;
-use crate::toolbar::Toolbar;
+use crate::toolbar::{Toolbar, ToolbarEvent};
 use crate::ui::easing::cubic_bezier;
 use crate::ui::popover::{below_right, popover_button};
 use crate::ui::toast::Toast;
@@ -33,8 +33,8 @@ use gpui::{
     App, Bounds, ClickEvent, ClipboardItem, Context, CursorStyle, Div, Entity, EntityInputHandler,
     EventEmitter, FocusHandle, Focusable, FontWeight, InteractiveElement, IntoElement, MouseButton,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Pixels, Point, Render,
-    ScrollHandle, SharedString, StatefulInteractiveElement, Styled, Task, UTF16Selection, Window,
-    actions, div, point, prelude::FluentBuilder, px,
+    ScrollHandle, SharedString, StatefulInteractiveElement, Styled, Subscription, Task,
+    UTF16Selection, Window, actions, div, point, prelude::FluentBuilder, px,
 };
 
 /// Carries each line's last-edit time across an edit.
@@ -233,6 +233,11 @@ pub struct Editor {
     /// The result's pointer state, tracked so the painted vinculum matches the
     /// color of the text under it.
     hovered_result: Option<usize>,
+    /// Whether the pointer has moved since the keyboard last did anything —
+    /// which is what decides who ⌘C belongs to. A result resting under a
+    /// forgotten pointer is not what the user is looking at while they type, so
+    /// it only takes the copy when the pointer was the last thing they moved.
+    pointer_leads: bool,
     pressed_result: Option<usize>,
     /// The result whose popover is showing, if any. Only ever one: opening a
     /// second closes the first, as clicking anywhere else does.
@@ -254,6 +259,7 @@ pub struct Editor {
     /// How far down the thumb the pointer took hold of it, so the thumb keeps
     /// its place under the pointer for the length of the drag.
     scrollbar_grab: Option<Pixels>,
+    _subscriptions: Vec<Subscription>,
 }
 
 impl EventEmitter<ContentChanged> for Editor {}
@@ -266,6 +272,14 @@ impl Editor {
         cx: &mut Context<Self>,
     ) -> Self {
         let content = content.into();
+
+        // Renaming takes the keyboard away from the calculation, so ⌘C there is
+        // about the name rather than about whatever the pointer was left over.
+        let subscriptions = vec![cx.subscribe(&toolbar, |editor, _, event, _| {
+            if matches!(event, ToolbarEvent::NameEditingStarted) {
+                editor.pointer_leads = false;
+            }
+        })];
 
         let mut editor = Self {
             focus_handle: cx.focus_handle(),
@@ -287,6 +301,7 @@ impl Editor {
             separator_hovered: false,
             separator_fade: Fade::new(0.0),
             hovered_result: None,
+            pointer_leads: false,
             pressed_result: None,
             open_result: None,
             press_handled: false,
@@ -298,6 +313,7 @@ impl Editor {
             autoscroll: false,
             scrollbar: None,
             scrollbar_grab: None,
+            _subscriptions: subscriptions,
         };
 
         editor.recalculate();
@@ -357,7 +373,7 @@ impl Editor {
     }
 
     /// Puts the caret at the end of the calculation and the keyboard with it,
-    /// which is where a calculation just created or just named carries on from.
+    /// which is where a calculation just created carries on from.
     pub fn focus_end(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.focus_handle.focus(window);
         self.move_to(self.text.content().len(), cx);
@@ -485,6 +501,10 @@ impl Editor {
     /// Restarts the blink so the caret shows solid the moment it moves, rather
     /// than possibly arriving mid-blink.
     fn caret_moved(&mut self, cx: &mut Context<Self>) {
+        // Every edit, every caret move and every change of selection arrives
+        // here, and each of them is the keyboard taking the lead back from the
+        // pointer.
+        self.pointer_leads = false;
         self.caret_visible = true;
         self.autoscroll = true;
         // Which diagnostics are worth showing turns on where the caret is, so
@@ -794,9 +814,12 @@ impl Editor {
     }
 
     fn copy(&mut self, _: &Copy, _: &mut Window, cx: &mut Context<Self>) {
-        // A result copy takes precedence while the pointer is over a result;
-        // otherwise copy the selected text.
+        // A result copy takes precedence while the pointer is over a result —
+        // but only while the pointer is what the user moved last. A pointer left
+        // over a result while they went on typing is not a request to copy it,
+        // so from the first keystroke onwards ⌘C is the selected text's again.
         if let Some(index) = self.hovered_result
+            && self.pointer_leads
             && self.value_at(index).is_some()
         {
             self.copy_result(index, cx);
@@ -901,6 +924,10 @@ impl Editor {
     }
 
     fn on_mouse_move(&mut self, event: &MouseMoveEvent, _: &mut Window, cx: &mut Context<Self>) {
+        // Noted before the drag is followed, so a move that drags out a
+        // selection hands the lead straight back to the keyboard.
+        self.pointer_leads = true;
+
         if self.drag.is_some() {
             let offset = self.offset_for_position(event.position);
             self.drag_to(offset, cx);
@@ -990,6 +1017,26 @@ impl Editor {
         };
         let mut offset = self.scroll.offset();
         offset.y = -bar.scroll_max * progress;
+        self.scroll.set_offset(offset);
+    }
+
+    /// Keeps the same proportion of a calculation above the viewport when a
+    /// font-size breakpoint changes. The pixel offset itself cannot be kept:
+    /// every line has just changed height.
+    fn preserve_scroll_position_for_font_resize(
+        &self,
+        content_height: Pixels,
+        view_height: Pixels,
+    ) {
+        let Some(previous) = self.scrollbar else {
+            return;
+        };
+
+        let progress =
+            (f32::from(-self.scroll.offset().y) / f32::from(previous.scroll_max)).clamp(0.0, 1.0);
+        let scroll_max = (content_height - view_height).max(px(0.0));
+        let mut offset = self.scroll.offset();
+        offset.y = -scroll_max * progress;
         self.scroll.set_offset(offset);
     }
 
@@ -1331,6 +1378,10 @@ impl Render for Editor {
             &self.fonts,
             window,
         ));
+        let font_size_changed = self
+            .layout
+            .as_ref()
+            .is_some_and(|previous| previous.metrics.font_size != layout.metrics.font_size);
         self.layout = Some(layout.clone());
 
         // Before wrapping makes the column boundary matter, the separator only
@@ -1358,6 +1409,9 @@ impl Render for Editor {
         let view_height = viewport.height - px(theme::NAV_HEIGHT);
         let content_height = layout.content_height().max(min_height) + px(2.0 * theme::GUTTER);
 
+        if font_size_changed {
+            self.preserve_scroll_position_for_font_resize(content_height, view_height);
+        }
         if std::mem::take(&mut self.autoscroll) {
             self.scroll_caret_into_view(&layout, view_height, content_height);
         }

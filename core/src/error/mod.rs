@@ -33,6 +33,20 @@ impl SiffraExecutionError {
         self
     }
 
+    #[inline]
+    pub fn with_debug_location(self, file: String, line: u32) -> SiffraExecutionError {
+        #[cfg(debug_assertions)]
+        {
+            self.with_location(file, line)
+        }
+
+        #[cfg(not(debug_assertions))]
+        {
+            let _ = (file, line);
+            self
+        }
+    }
+
     pub fn message(&self) -> String {
         self.message.clone()
     }

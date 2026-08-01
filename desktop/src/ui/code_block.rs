@@ -181,13 +181,14 @@ impl Focusable for SelectableCodeLine {
 }
 
 impl Render for SelectableCodeLine {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let font_size = theme::font_size_for_window(window.viewport_size().width);
         div()
             .w_full()
-            .h(px(1.445 * theme::REM))
+            .h(font_size * 1.445)
             .font_family(self.mono_family.clone())
-            .text_size(px(0.85 * theme::REM))
-            .line_height(px(1.445 * theme::REM))
+            .text_size(font_size * 0.85)
+            .line_height(font_size * 1.445)
             .text_color(rgb(0xcdd4d7))
             .cursor(CursorStyle::IBeam)
             .track_focus(&self.focus_handle)
@@ -373,6 +374,7 @@ impl CodeBlockLine {
 pub fn code_block(
     id: impl Into<ElementId>,
     lines: impl IntoIterator<Item = CodeBlockLine>,
+    font_size: Pixels,
 ) -> Stateful<gpui::Div> {
     div()
         .id(id)
@@ -384,8 +386,8 @@ pub fn code_block(
         .border_1()
         .border_color(rgb(0x33363f))
         .rounded(px(0.4 * theme::REM))
-        .text_size(px(0.85 * theme::REM))
-        .line_height(px(1.445 * theme::REM))
+        .text_size(font_size * 0.85)
+        .line_height(font_size * 1.445)
         .children(lines.into_iter().map(|line| {
             div()
                 .w_full()

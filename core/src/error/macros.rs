@@ -4,11 +4,11 @@ macro_rules! siffra_error {
         use crate::error::SiffraExecutionError;
         if let Some(span) = $span {
             SiffraExecutionError::new($message.to_string())
-                .with_location(file!().to_string(), line!())
+                .with_debug_location(file!().to_string(), line!())
                 .with_span(span.start(), span.end())
         } else {
             SiffraExecutionError::new($message.to_string())
-                .with_location(file!().to_string(), line!())
+                .with_debug_location(file!().to_string(), line!())
         }
     }};
     ($message:expr, $description:expr, $span:expr) => {{
@@ -16,12 +16,12 @@ macro_rules! siffra_error {
         if let Some(span) = $span {
             SiffraExecutionError::new($message.to_string())
                 .with_description($description.to_string())
-                .with_location(file!().to_string(), line!())
+                .with_debug_location(file!().to_string(), line!())
                 .with_span(span.start(), span.end())
         } else {
             SiffraExecutionError::new($message.to_string())
                 .with_description($description.to_string())
-                .with_location(file!().to_string(), line!())
+                .with_debug_location(file!().to_string(), line!())
         }
     }};
 }
