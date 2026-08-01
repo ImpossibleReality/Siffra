@@ -167,12 +167,7 @@ jobs:
         if: ${{ hashFiles(format('.github/release-notes/{0}.md', github.ref_name)) == '' }}
         uses: orhun/git-cliff-action@v4
         with:
-          args: --config cliff.toml --unreleased --tag ${{ github.ref_name }} --output release-assets/release-notes.md
-
-      - name: Generate the full changelog asset
-        uses: orhun/git-cliff-action@v4
-        with:
-          args: --config cliff.toml --output release-assets/CHANGELOG.md
+          args: --unreleased --tag ${{ github.ref_name }} --output release-assets/release-notes.md
 
       - name: Build the signed updater manifest
         shell: bash
