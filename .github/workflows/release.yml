@@ -5,7 +5,8 @@ on:
     tags: ["v*"]
 
 # Release assets are published only after all supported platforms produce a
-# signed updater package. It is safe to rerun a failed release: uploads replace
+# minisign-signed updater package. This detached updater signature is separate
+# from macOS code signing. It is safe to rerun a failed release: uploads replace
 # an existing asset with the same name.
 permissions:
   contents: write
@@ -70,13 +71,13 @@ jobs:
       - name: Install cargo-packager
         run: cargo install cargo-packager --version 0.11.8 --locked
 
-      - name: Configure macOS signing identity
-        if: runner.os == 'macOS' && vars.APPLE_SIGNING_IDENTITY != ''
-        env:
-          APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
+      - name: Configure macOS ad-hoc signing
+        if: runner.os == 'macOS'
         shell: bash
         run: |
-          printf '\n[package.metadata.packager.macos]\nsigning-identity = "%s"\n' "$APPLE_SIGNING_IDENTITY" >> desktop/Cargo.toml
+          # `-` is codesign's ad-hoc identity. It seals the complete app bundle
+          # without claiming a Developer ID or making it trusted by Gatekeeper.
+          printf '\n[package.metadata.packager.macos]\nsigning-identity = "-"\n' >> desktop/Cargo.toml
 
       - name: Package and sign
         env:
@@ -85,12 +86,6 @@ jobs:
           SIFFRA_UPDATER_PUBLIC_KEY: ${{ vars.SIFFRA_UPDATER_PUBLIC_KEY }}
           CARGO_PACKAGER_SIGN_PRIVATE_KEY: ${{ secrets.CARGO_PACKAGER_SIGN_PRIVATE_KEY }}
           CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD: ${{ secrets.CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD }}
-          # cargo-packager reads macOS signing/notarization credentials directly.
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         shell: bash
         run: |
           set -euo pipefail
@@ -98,6 +93,26 @@ jobs:
           test -n "$CARGO_PACKAGER_SIGN_PRIVATE_KEY"
           test -n "$CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD"
           cargo packager --release --packages siffra-desktop --formats "${{ matrix.formats }}"
+
+      - name: Verify macOS ad-hoc signatures
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="$(find target/release/bundle -type d -name '*.app' -print -quit)"
+          dmg="$(find target/release/bundle -type f -name '*.dmg' -print -quit)"
+          test -n "$app"
+          test -n "$dmg"
+
+          # Structural verification catches an unsigned bundle and the invalid
+          # linker-only signature that previously produced the "damaged" alert.
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign --verify --strict --verbose=2 "$dmg"
+
+          app_signature="$(codesign --display --verbose=4 "$app" 2>&1)"
+          dmg_signature="$(codesign --display --verbose=4 "$dmg" 2>&1)"
+          grep -q '^Signature=adhoc$' <<<"$app_signature"
+          grep -q '^Signature=adhoc$' <<<"$dmg_signature"
 
       - name: Stage installers and the updater package
         shell: bash
