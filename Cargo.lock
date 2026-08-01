@@ -1073,7 +1073,7 @@ dependencies = [
 
 [[package]]
 name = "conformance"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "siffra",
 ]
@@ -5208,7 +5208,7 @@ checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 
 [[package]]
 name = "siffra"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "astro-float",
  "chumsky",
@@ -5222,7 +5222,7 @@ dependencies = [
 
 [[package]]
 name = "siffra-desktop"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "cargo-packager-updater",
  "chrono",
