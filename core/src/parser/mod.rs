@@ -1,8 +1,10 @@
 pub mod representation;
 mod span;
+mod syntax;
 
 pub use representation::*;
 pub use span::Span;
+pub use syntax::{SyntaxKind, SyntaxSpan, syntax_spans};
 
 use crate::error::SiffraExecutionError;
 use crate::siffra_error;
@@ -76,26 +78,10 @@ fn to_span(span: SimpleSpan<usize>) -> Span {
     Span::new(span.start, span.end)
 }
 
-/// Builds the parser for a single line of input.
-fn line_parser<'a>() -> impl Parser<'a, &'a str, ParsedLine, Extra<'a>> {
-    let sp: Boxed<'a, ()> = just(' ').repeated().boxed();
-    let sp1: Boxed<'a, ()> = just(' ').repeated().at_least(1).boxed();
-
-    // Succeeds (without consuming) when the next char is not part of an
-    // identifier, so keywords like `plus` don't match inside `plush`.
-    let word_boundary: Boxed<'a, ()> = any()
-        .filter(|c: &char| !(c.is_ascii_alphanumeric() || *c == '_'))
-        .rewind()
-        .ignored()
-        .or(end())
-        .boxed();
-
-    // Matches a whole keyword, requiring a word boundary afterwards.
-    let kw = {
-        let word_boundary = word_boundary.clone();
-        move |w: &'static str| just(w).then_ignore(word_boundary.clone()).boxed()
-    };
-
+/// The numeric literal grammar shared by evaluation and tolerant syntax
+/// analysis. Keeping it here prevents highlighting from drifting away from
+/// what the calculator accepts (notably grouped digits and exponents).
+fn number_parser<'a>() -> Boxed<'a, String> {
     let digit = any().filter(|c: &char| c.is_ascii_digit());
     // Underscores may separate arbitrary digits. Commas, however, must form
     // conventional three-digit groups so an argument separator in `min(1,2)`
@@ -134,12 +120,12 @@ fn line_parser<'a>() -> impl Parser<'a, &'a str, ParsedLine, Extra<'a>> {
     ))
     .boxed();
 
-    let number_str: Boxed<'a, String> = decimal
+    decimal
         .then(
             just('e')
                 .or(just('E'))
                 .ignore_then(just('-').or(just('+')).or_not())
-                .then(digits.clone())
+                .then(digits)
                 .or_not(),
         )
         .map(|(mut s, exp): (String, Option<(Option<char>, String)>)| {
@@ -152,7 +138,46 @@ fn line_parser<'a>() -> impl Parser<'a, &'a str, ParsedLine, Extra<'a>> {
             }
             s
         })
+        .boxed()
+}
+
+/// The chemical qualifier grammar shared by evaluation and tolerant syntax
+/// analysis. Chemical validity is checked later by `Compound`; this parser is
+/// intentionally concerned only with the formula's syntactic extent.
+fn chemical_parser<'a>() -> Boxed<'a, String> {
+    any()
+        .filter(|c: &char| c.is_ascii_uppercase() || *c == '(')
+        .then(
+            any()
+                .filter(|c: &char| c.is_ascii_alphanumeric() || *c == '(' || *c == ')')
+                .repeated(),
+        )
+        .to_slice()
+        .map(|s: &str| s.to_string())
+        .boxed()
+}
+
+/// Builds the parser for a single line of input.
+fn line_parser<'a>() -> impl Parser<'a, &'a str, ParsedLine, Extra<'a>> {
+    let sp: Boxed<'a, ()> = just(' ').repeated().boxed();
+    let sp1: Boxed<'a, ()> = just(' ').repeated().at_least(1).boxed();
+
+    // Succeeds (without consuming) when the next char is not part of an
+    // identifier, so keywords like `plus` don't match inside `plush`.
+    let word_boundary: Boxed<'a, ()> = any()
+        .filter(|c: &char| !(c.is_ascii_alphanumeric() || *c == '_'))
+        .rewind()
+        .ignored()
+        .or(end())
         .boxed();
+
+    // Matches a whole keyword, requiring a word boundary afterwards.
+    let kw = {
+        let word_boundary = word_boundary.clone();
+        move |w: &'static str| just(w).then_ignore(word_boundary.clone()).boxed()
+    };
+
+    let number_str = number_parser();
 
     let number_atom: Boxed<'a, ParsedExpr> = number_str
         .clone()
@@ -175,6 +200,10 @@ fn line_parser<'a>() -> impl Parser<'a, &'a str, ParsedLine, Extra<'a>> {
             .map(|name| format!("°{name}")),
         ascii_unit_name,
     ))
+    // Do not accept a unit as a prefix of an identifier. In particular,
+    // `5 m2` must not become the dimensional value `5 m` multiplied by `2`;
+    // the variable shorthand is intentionally the adjacent `5m2` form.
+    .then_ignore(word_boundary.clone())
     .try_map(|s: String, span: SimpleSpan| {
         if UNIT_EXCLUDE.contains(&s.as_str()) {
             Err(Rich::custom(span, "operator word, not a unit"))
@@ -185,16 +214,7 @@ fn line_parser<'a>() -> impl Parser<'a, &'a str, ParsedLine, Extra<'a>> {
     .boxed();
 
     // A chemical formula, e.g. `H2O`, `NaCl`, `Ca(OH)2`. Captured verbatim.
-    let chemical_str: Boxed<'a, String> = any()
-        .filter(|c: &char| c.is_ascii_uppercase() || *c == '(')
-        .then(
-            any()
-                .filter(|c: &char| c.is_ascii_alphanumeric() || *c == '(' || *c == ')')
-                .repeated(),
-        )
-        .to_slice()
-        .map(|s: &str| s.to_string())
-        .boxed();
+    let chemical_str = chemical_parser();
 
     // A chemical qualifier is part of a single unit atom, so the natural
     // `g H2O` form is unambiguous even though it contains one space. Brackets
@@ -1214,6 +1234,13 @@ mod tests {
     fn parses_implicit_multiplication() {
         parse("5(2)(3)");
         parse("2pi");
+    }
+
+    #[test]
+    fn variable_multiplication_requires_number_first_and_no_space() {
+        parse("5m2");
+        assert!(parse_line("5 m2").is_err());
+        assert!(parse_line("m2 5").is_err());
     }
 
     #[test]

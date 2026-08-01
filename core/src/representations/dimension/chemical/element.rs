@@ -133,6 +133,17 @@ pub struct Element {
 
 impl Element {
     pub fn from_symbol(sym: &str) -> Option<Element> {
+        // `periodic-table-on-an-enum` binary-searches its symbol table with
+        // unsigned bounds, so `r = m - 1` underflows for any term sorting
+        // before the first entry ("Ac"). Reject anything that is not shaped
+        // like a symbol before handing the string over.
+        let mut chars = sym.chars();
+        if !matches!(chars.next(), Some(c) if c.is_ascii_uppercase()) {
+            return None;
+        }
+        if !chars.all(|c| c.is_ascii_lowercase()) {
+            return None;
+        }
         PElement::from_symbol(sym).map(Element::from_pt_element)
     }
 

@@ -367,6 +367,9 @@ fn color_for(token: Token) -> Hsla {
         Token::Comment => theme::comment(),
         Token::Chemical => theme::chemical(),
         Token::Number => theme::number(),
+        Token::Unit => theme::unit(),
+        Token::Function => theme::operation(),
+        Token::Variable => theme::variable(),
         Token::Operation => theme::operation(),
     })
 }

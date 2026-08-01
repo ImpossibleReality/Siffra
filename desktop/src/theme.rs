@@ -109,6 +109,14 @@ pub fn chemical() -> Rgba {
     rgb(0xc9a0dc)
 }
 
+pub fn unit() -> Rgba {
+    rgb(0xe5c07b)
+}
+
+pub fn variable() -> Rgba {
+    rgb(0xcdd4d7)
+}
+
 pub fn operation() -> Rgba {
     rgb(0x90bee3)
 }

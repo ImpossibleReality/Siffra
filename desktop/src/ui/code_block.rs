@@ -413,6 +413,9 @@ fn token_color(token: Token) -> gpui::Hsla {
         Token::Comment => theme::comment().into(),
         Token::Chemical => theme::chemical().into(),
         Token::Number => theme::number().into(),
+        Token::Unit => theme::unit().into(),
+        Token::Function => theme::operation().into(),
+        Token::Variable => theme::variable().into(),
         Token::Operation => theme::operation().into(),
     }
 }
