@@ -193,12 +193,12 @@ jobs:
             -name '*.dmg' -o -name '*.dmg.sig' -o \
             -name '*.msi' -o -name '*.msi.sig' -o \
             -name '*.deb' -o -name '*.deb.sig' -o \
-            -name latest.json -o -name CHANGELOG.md \
+            -name latest.json \
             \) -print0)
 
           # Four platforms contribute four public artifacts each, followed by
-          # the updater manifest and changelog. Refuse to publish anything else.
-          test "${#assets[@]}" -eq 18
+          # the updater manifest. Refuse to publish anything else.
+          test "${#assets[@]}" -eq 17
           for asset in "${assets[@]}"; do
             gh release upload "$GITHUB_REF_NAME" "$asset" --clobber
           done
