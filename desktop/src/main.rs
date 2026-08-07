@@ -162,7 +162,8 @@ fn main() {
         cx.set_menus(menus::app_menus());
         // And after the menus, since this takes back the ⌘? macOS would
         // otherwise have claimed for the Help menu's search field.
-        platform::detach_native_help_menu();
+        #[cfg(target_os = "macos")]
+        platform::macos::detach_native_help_menu();
 
         // Quitting is one of the moments a calculation is written, since what
         // was typed in the last fraction of a second has not been saved yet.

@@ -225,11 +225,12 @@ impl Toolbar {
     /// platform acts on that before this application sees the press, so the
     /// window has to be still *before* the press — which means following the
     /// pointer rather than waiting for it to be pressed.
-    fn apply_window_movable(&mut self, window: &mut Window) {
+    fn apply_window_movable(&mut self, _window: &mut Window) {
         let movable = !(self.editing && self.name_hovered);
         if movable != self.window_movable {
             self.window_movable = movable;
-            platform::set_window_movable(window, movable);
+            #[cfg(target_os = "macos")]
+            platform::macos::set_window_movable(_window, movable);
         }
     }
 

@@ -13,6 +13,7 @@
 //! claims it.
 
 use crate::editor::ShowCharacterPalette;
+#[cfg(target_os = "macos")]
 use crate::platform;
 use crate::text_input::{Copy, Cut, Paste, Redo, SelectAll, Undo};
 use crate::workspace::{
@@ -115,7 +116,8 @@ pub fn app_menus() -> Vec<Menu> {
 /// These are registered globally so they work no matter where the keyboard is —
 /// including, for the menu's purposes, when nothing at all is focused.
 pub fn register_actions(cx: &mut App) {
-    cx.on_action(|_: &About, _: &mut App| platform::show_about_panel());
+    #[cfg(target_os = "macos")]
+    cx.on_action(|_: &About, _: &mut App| platform::macos::show_about_panel());
     cx.on_action(|_: &Hide, cx: &mut App| cx.hide());
     cx.on_action(|_: &HideOthers, cx: &mut App| cx.hide_other_apps());
     cx.on_action(|_: &ShowAll, cx: &mut App| cx.unhide_other_apps());

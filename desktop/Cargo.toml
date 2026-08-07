@@ -39,7 +39,14 @@ dirs = "6"
 cargo-packager-updater = "0.2.3"
 
 [target.'cfg(target_os = "macos")'.dependencies]
-objc = "0.2"
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = [
+    "NSApplication",
+    "NSMenu",
+    "NSResponder",
+    "NSView",
+    "NSWindow",
+] }
 raw-window-handle = "0.6"
 
 [dev-dependencies]
