@@ -11,20 +11,18 @@ with GPUI and Rust.
 
 ### Prebuild Binaries
 
-There are provided prebuilt binaries for all supported platforms in the
+There are provided prebuilt binaries for all platforms in the
 [Releases tab](https://github.com/ImpossibleReality/Siffra/releases).
 
 ### Building from source
 
-To build Siffra from source, you will need to have the following installed:
+To build Siffra from source, you will need to have [Rust](https://www.rust-lang.org/tools/install)
+installed.
 
-- [Rust](https://www.rust-lang.org/tools/install)
-
-Once you have these installed, you can clone the repository and build Siffra with the following
-commands:
+You can then clone the repository and run Siffra with the following command:
 
 ```sh
-cargo run -p siffra-desktop
+cargo run
 ```
 
 For a native installer, install `cargo-packager` and run
@@ -62,9 +60,8 @@ Any contributions to Siffra are welcome! If you would like to contribute, please
 
 ## Supporting the project
 
-Unlike other calculators that provide similar functionality, Siffra is open-source, which also means
-I am unable to make a profit off of it. If you find Siffra useful to you and would like to support
-my work, you can do so by buying me a coffee using the button below. Thank you!
+If you find Siffra useful to you and would like to support my work, you can do so by buying me a
+coffee using the button below. Thank you!
 
 <a href="https://www.buymeacoffee.com/johannovak" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
 
