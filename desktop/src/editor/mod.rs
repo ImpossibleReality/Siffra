@@ -571,7 +571,9 @@ impl Editor {
             );
 
         Some(match output {
-            LineOutput::Value { string, repeating } => {
+            LineOutput::Value {
+                string, repeating, ..
+            } => {
                 let copied = self
                     .copy_flash
                     .is_some_and(|flash| flash.result == index && flash.lit());

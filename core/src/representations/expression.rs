@@ -1,6 +1,39 @@
 use crate::parser::Span;
 use crate::representations::Dimension;
+use crate::representations::TimeZone;
 use crate::representations::Value;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InstantKeyword {
+    Now,
+    Today,
+    Tomorrow,
+    Yesterday,
+}
+
+/// An instant as written. Local time zone (used when timezone is unspecified)
+/// and the evaluation timestamp are resolved during evaluation, so some information
+/// is not yet known.
+#[derive(Debug, Clone, PartialEq)]
+pub struct InstantLiteral {
+    pub keyword: Option<InstantKeyword>,
+    /// A missing year is resolved during evaluation
+    pub date: Option<(Option<i16>, i8, i8)>,
+    pub time: Option<(i8, i8, i8)>,
+    /// Whether the source spelled seconds out, which selects the granularity.
+    pub has_seconds: bool,
+    pub zone: Option<TimeZone>,
+}
+
+/// A wall clock as written. The zone defaults to the document's during
+/// evaluation, which is also where the anchoring date comes from.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ClockLiteral {
+    pub time: (i8, i8, i8),
+    /// Whether the source spelled seconds out, which selects the granularity.
+    pub has_seconds: bool,
+    pub zone: Option<TimeZone>,
+}
 
 #[derive(Debug, Clone)]
 pub struct Expression {
@@ -12,6 +45,13 @@ pub struct Expression {
 #[derive(Debug, Clone)]
 pub enum InnerExpression {
     Constant(Value),
+    Instant(InstantLiteral),
+    Clock(ClockLiteral),
+    /// `a to b` over two temporal points
+    Interval {
+        start: Box<Expression>,
+        end: Box<Expression>,
+    },
     Negate(Box<Expression>),
     Percent(Box<Expression>),
     Convert(Box<Expression>, Dimension),
@@ -55,6 +95,21 @@ impl Expression {
 
     pub fn constant(value: Value) -> Expression {
         Expression::new(InnerExpression::Constant(value))
+    }
+
+    pub fn instant(literal: InstantLiteral) -> Expression {
+        Expression::new(InnerExpression::Instant(literal))
+    }
+
+    pub fn clock(literal: ClockLiteral) -> Expression {
+        Expression::new(InnerExpression::Clock(literal))
+    }
+
+    pub fn interval(start: Expression, end: Expression) -> Expression {
+        Expression::new(InnerExpression::Interval {
+            start: Box::new(start),
+            end: Box::new(end),
+        })
     }
 
     pub fn percent(expression: Expression) -> Expression {

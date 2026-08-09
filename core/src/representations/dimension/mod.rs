@@ -12,6 +12,7 @@ mod mass;
 mod prefix;
 mod temperature;
 mod time;
+mod timezone;
 
 use crate::representations::Float;
 use std::collections::BTreeMap;
@@ -33,6 +34,7 @@ pub use {
     prefix::{Prefix, SiPrefixable, parse_si_prefixed},
     temperature::TemperatureInterval,
     time::Time,
+    timezone::TimeZone,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -195,8 +197,38 @@ pub enum Unit {
     Base(Quantity),
     Derived(DerivedUnit),
     Absolute(AbsoluteTemperature),
+    /// An affine point on the Time axis, measured in seconds since the Unix
+    /// epoch. The scalar is zone-independent, so changing zone is a relabel.
+    Instant(TimeZone),
+    /// A wall-clock reading. Stored the same way an instant is, on a date that
+    /// only exists to resolve the zone's offset, so the two share their
+    /// arithmetic and differ in what they show.
+    Clock(TimeZone),
     Currency(Currency),
     Prefixed(Prefix, Box<Unit>),
+}
+
+/// The affine units: points on an axis rather than lengths along it. Arithmetic
+/// other than "point ± interval" and "point − point" decays them to intervals.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Affine {
+    Temperature(AbsoluteTemperature),
+    Instant(TimeZone),
+    Clock(TimeZone),
+}
+
+impl Affine {
+    /// The zone a temporal point is read in, if this is one.
+    pub fn zone(&self) -> Option<&TimeZone> {
+        match self {
+            Affine::Instant(zone) | Affine::Clock(zone) => Some(zone),
+            Affine::Temperature(_) => None,
+        }
+    }
+
+    pub fn is_clock(&self) -> bool {
+        matches!(self, Affine::Clock(_))
+    }
 }
 
 impl Unit {
@@ -220,6 +252,9 @@ impl Unit {
         if let Some(prefixed) = prefixed_from_str(s) {
             return Ok(prefixed);
         }
+        if let Some(zone) = TimeZone::parse(s) {
+            return Ok(Unit::Instant(zone));
+        }
         Err(())
     }
 
@@ -238,6 +273,7 @@ impl Unit {
             Unit::Base(quantity) => quantity.shorthand(),
             Unit::Derived(derived) => derived.shorthand().to_string(),
             Unit::Absolute(absolute) => absolute.shorthand().to_string(),
+            Unit::Instant(zone) | Unit::Clock(zone) => zone.label().to_string(),
             Unit::Currency(currency) => currency.code().to_string(),
             Unit::Prefixed(prefix, unit) => format!("{}{}", prefix.symbol(), unit.shorthand()),
         }
@@ -256,6 +292,7 @@ impl Unit {
             Unit::Base(quantity) => dim.add_axis(quantity.base_dimension(), Float::from(1)),
             Unit::Derived(derived) => return derived.dimensionality(),
             Unit::Absolute(absolute) => return absolute.dimensionality(),
+            Unit::Instant(_) | Unit::Clock(_) => dim.add_axis(BaseDimension::Time, Float::from(1)),
             Unit::Currency(_) => dim.add_axis(BaseDimension::Currency, Float::from(1)),
             Unit::Prefixed(_, unit) => return unit.dimensionality(),
         }
@@ -269,6 +306,8 @@ impl Unit {
             Unit::Absolute(absolute) => {
                 Some(Quantity::Temperature(absolute.interval()).get_ratio())
             }
+            // Epoch seconds; the zone offsets the reading, never the scalar.
+            Unit::Instant(_) | Unit::Clock(_) => Some(Float::from(1)),
             Unit::Currency(currency) => currency.factor(),
             Unit::Prefixed(prefix, unit) => Some(&prefix.factor() * &unit.factor()?),
         }
@@ -510,31 +549,96 @@ impl Dimension {
         self.0.is_empty()
     }
 
-    /// Returns the lone affine temperature term, if this dimension has one.
-    pub fn as_absolute_temperature(&self) -> Option<AbsoluteTemperature> {
+    /// Returns the lone affine term, if this dimension is exactly one.
+    pub fn as_affine(&self) -> Option<Affine> {
         match self.0.as_slice() {
-            [(Unit::Absolute(absolute), power)] if *power == Float::from(1) => Some(*absolute),
+            [(Unit::Absolute(absolute), power)] if *power == Float::from(1) => {
+                Some(Affine::Temperature(*absolute))
+            }
+            [(Unit::Instant(zone), power)] if *power == Float::from(1) => {
+                Some(Affine::Instant(zone.clone()))
+            }
+            [(Unit::Clock(zone), power)] if *power == Float::from(1) => {
+                Some(Affine::Clock(zone.clone()))
+            }
             _ => None,
         }
     }
 
-    /// Replaces affine temperatures with linear intervals after arithmetic.
-    pub fn decay_absolute(self) -> Self {
-        if self.as_absolute_temperature().is_some() {
-            return self;
+    /// The lone temporal point this dimension names, if it is one.
+    pub fn as_temporal_point(&self) -> Option<Affine> {
+        self.as_affine().filter(|affine| affine.zone().is_some())
+    }
+
+    pub fn is_temporal_point(&self) -> bool {
+        self.as_temporal_point().is_some()
+    }
+
+    pub fn as_absolute_temperature(&self) -> Option<AbsoluteTemperature> {
+        match self.as_affine() {
+            Some(Affine::Temperature(absolute)) => Some(absolute),
+            _ => None,
         }
+    }
+
+    pub fn as_instant(&self) -> Option<TimeZone> {
+        match self.as_affine() {
+            Some(Affine::Instant(zone)) => Some(zone),
+            _ => None,
+        }
+    }
+
+    pub fn as_clock(&self) -> Option<TimeZone> {
+        match self.as_affine() {
+            Some(Affine::Clock(zone)) => Some(zone),
+            _ => None,
+        }
+    }
+
+    /// Replaces affine units with their linear counterparts after arithmetic.
+    ///
+    /// A scaled temperature is still a temperature, so a lone one survives.
+    /// A scaled instant is not a date — there is no calendar meaning to twice
+    /// the epoch — so instants and clocks always decay to elapsed seconds.
+    pub fn decay_affine(self) -> Self {
+        let keep_temperature = self.as_absolute_temperature().is_some();
         let terms = self
             .0
             .into_iter()
             .map(|(unit, power)| match unit {
-                Unit::Absolute(absolute) => (
+                Unit::Absolute(absolute) if !keep_temperature => (
                     Unit::Base(Quantity::Temperature(absolute.interval())),
                     power,
                 ),
+                Unit::Instant(_) | Unit::Clock(_) => {
+                    (Unit::Base(Quantity::Time(Time::Second)), power)
+                }
                 other => (other, power),
             })
             .collect();
         Dimension(terms)
+    }
+
+    /// The lone calendar-length term this dimension names, if any. These are
+    /// the irregular civil units whose length depends on where on the calendar
+    /// they land; hour and below are exact SI multiples and stay on the ratio
+    /// path.
+    pub fn as_calendar_unit(&self) -> Option<Time> {
+        match self.0.as_slice() {
+            [(Unit::Base(Quantity::Time(unit)), power)] if *power == Float::from(1) => {
+                is_calendar_unit(*unit).then_some(*unit)
+            }
+            _ => None,
+        }
+    }
+
+    /// Whether this dimension is a plain time interval of the first power.
+    pub fn is_duration(&self) -> bool {
+        let mut axes = self.dimensionality().0.into_iter();
+        matches!(
+            (axes.next(), axes.next()),
+            (Some((BaseDimension::Time, exponent)), None) if exponent == Float::from(1)
+        ) && !self.is_temporal_point()
     }
 
     pub fn named_equivalents(&self) -> Vec<DerivedUnit> {
@@ -612,6 +716,11 @@ impl Dimension {
                         .entry(BaseDimension::Temperature)
                         .or_insert_with(|| Unit::Base(Quantity::Temperature(absolute.interval())));
                 }
+                Unit::Instant(_) | Unit::Clock(_) => {
+                    incidental
+                        .entry(BaseDimension::Time)
+                        .or_insert_with(|| Unit::Base(Quantity::Time(Time::Second)));
+                }
                 Unit::Currency(_) => {
                     incidental
                         .entry(BaseDimension::Currency)
@@ -639,6 +748,22 @@ impl Dimension {
         }
         Some(Dimension(target))
     }
+}
+
+/// Day and larger are civil units: DST, month lengths and leap years make their
+/// length depend on the calendar. Hour and smaller are exact SI multiples.
+pub fn is_calendar_unit(unit: Time) -> bool {
+    matches!(
+        unit,
+        Time::Day
+            | Time::Week
+            | Time::Fortnight
+            | Time::Month
+            | Time::Year
+            | Time::Decade
+            | Time::Century
+            | Time::Millennium
+    )
 }
 
 fn default_unit(axis: BaseDimension) -> Unit {

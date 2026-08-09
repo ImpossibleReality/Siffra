@@ -217,7 +217,8 @@ impl TextBuffer {
 
     pub fn previous_word_boundary(&self, offset: usize) -> usize {
         self.content
-            .split_word_bound_indices().rfind(|(start, word)| *start < offset && is_word(word))
+            .split_word_bound_indices()
+            .rfind(|(start, word)| *start < offset && is_word(word))
             .map_or(0, |(start, _)| start)
     }
 

@@ -23,7 +23,19 @@ struct Text {
 
 fn text_for(output: &LineOutput, budget: usize) -> Text {
     match output {
-        LineOutput::Value { string, repeating } => {
+        // Rounding is only meaningful for pure numeric values
+        LineOutput::Value {
+            string,
+            numeric: false,
+            ..
+        } => Text {
+            text: string.clone().into(),
+            repetend: None,
+            characters: string.chars().count(),
+        },
+        LineOutput::Value {
+            string, repeating, ..
+        } => {
             let display = format_number_for_characters(string, budget, *repeating);
             let characters = display.len();
             let NumberDisplay {

@@ -208,6 +208,44 @@ impl Float {
         self.round_significant_digits(INEXACT_SIGNIFICANT_DIGITS)
     }
 
+    /// Splits the value into sign, integer digits, and fractional digits.
+    /// Returns `None` for NaN and infinities.
+    pub fn decimal_digits(&self) -> Option<(bool, String, String)> {
+        let text = self.to_string().replace(',', "");
+        let (mantissa, exponent) = match text.split_once('E') {
+            Some((mantissa, exponent)) => (mantissa, exponent.parse::<i32>().ok()?),
+            None => (text.as_str(), 0),
+        };
+        let (negative, mantissa) = match mantissa.strip_prefix('-') {
+            Some(rest) => (true, rest),
+            None => (false, mantissa),
+        };
+        if mantissa.is_empty() || !mantissa.chars().all(|c| c.is_ascii_digit() || c == '.') {
+            return None;
+        }
+
+        let (integer, fraction) = mantissa.split_once('.').unwrap_or((mantissa, ""));
+        let mut digits = format!("{integer}{fraction}");
+        let mut point = integer.len() as i32 + exponent;
+        if point <= 0 {
+            digits.insert_str(0, &"0".repeat((1 - point) as usize));
+            point = 1;
+        }
+        while (digits.len() as i32) < point {
+            digits.push('0');
+        }
+
+        let (integer, fraction) = digits.split_at(point as usize);
+        Some((negative, integer.to_string(), fraction.to_string()))
+    }
+
+    /// Truncates towards zero, failing when the value does not fit an `i64`.
+    pub fn to_i64(&self) -> Option<i64> {
+        let (negative, integer, _) = self.decimal_digits()?;
+        let magnitude = integer.parse::<i64>().ok()?;
+        Some(if negative { -magnitude } else { magnitude })
+    }
+
     pub fn is_nonneg_integer(&self) -> bool {
         matches!(
             self.partial_cmp(&Float::from(0.0)),
@@ -310,11 +348,15 @@ impl Display for Float {
             mantissa.push('0');
         }
 
-        if (-MAX_LEN_BEFORE_SCIENTIFIC_NOTATION..=MAX_LEN_BEFORE_SCIENTIFIC_NOTATION).contains(&exponent)
+        if (-MAX_LEN_BEFORE_SCIENTIFIC_NOTATION..=MAX_LEN_BEFORE_SCIENTIFIC_NOTATION)
+            .contains(&exponent)
         {
             mantissa.insert_str(0, &"0".repeat(MAX_LEN_BEFORE_SCIENTIFIC_NOTATION as usize));
 
-            mantissa.insert((MAX_LEN_BEFORE_SCIENTIFIC_NOTATION + 1 + exponent) as usize, '.');
+            mantissa.insert(
+                (MAX_LEN_BEFORE_SCIENTIFIC_NOTATION + 1 + exponent) as usize,
+                '.',
+            );
 
             while mantissa.ends_with('0') {
                 mantissa.pop();

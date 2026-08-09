@@ -1,4 +1,4 @@
-use chrono::{Datelike, Local, TimeZone};
+use jiff::{Timestamp, tz::TimeZone};
 
 const MINUTE: i64 = 60_000;
 const HOUR: i64 = 60 * MINUTE;
@@ -24,18 +24,18 @@ pub fn relative_time(timestamp: i64, now: i64) -> String {
         return format!("{}d ago", elapsed / DAY);
     }
 
-    let Some(date) = Local.timestamp_millis_opt(timestamp).single() else {
+    let Ok(timestamp) = Timestamp::from_millisecond(timestamp) else {
         return String::new();
     };
-    let same_year = Local
-        .timestamp_millis_opt(now)
-        .single()
-        .is_some_and(|today| today.year() == date.year());
+    let time_zone = TimeZone::system();
+    let date = timestamp.to_zoned(time_zone.clone());
+    let same_year = Timestamp::from_millisecond(now)
+        .is_ok_and(|today| today.to_zoned(time_zone).year() == date.year());
 
     if same_year {
-        date.format("%b %-d").to_string()
+        date.strftime("%b %-d").to_string()
     } else {
-        date.format("%b %-d, %Y").to_string()
+        date.strftime("%b %-d, %Y").to_string()
     }
 }
 

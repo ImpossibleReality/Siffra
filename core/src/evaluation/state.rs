@@ -1,5 +1,6 @@
 use crate::error::SiffraExecutionError;
-use crate::representations::{Dimension, Value};
+use crate::representations::{Dimension, TimeZone, Value};
+use jiff::Zoned;
 use std::collections::BTreeMap;
 
 #[derive(Clone)]
@@ -14,6 +15,9 @@ pub struct SiffraState {
     previous_value: Option<Value>,
     block_total: Option<Value>,
     block_total_error: Option<(Dimension, Dimension)>,
+    timezone: TimeZone,
+    /// Resolved once per pass so every line in a document agrees on "now".
+    now: Zoned,
 }
 
 pub enum VariableAccessError {
@@ -29,12 +33,34 @@ impl Default for SiffraState {
 
 impl SiffraState {
     pub fn new() -> Self {
+        Self::in_timezone(TimeZone::system())
+    }
+
+    /// A pass pinned to an explicit zone, for documents that name one and for
+    /// tests that must not depend on the machine's zone.
+    pub fn in_timezone(timezone: TimeZone) -> Self {
+        let now = Zoned::now().with_time_zone(timezone.inner().clone());
         Self {
             variables: BTreeMap::new(),
             previous_value: None,
             block_total: Some(Value::from(0.0)),
             block_total_error: None,
+            timezone,
+            now,
         }
+    }
+
+    pub fn timezone(&self) -> &TimeZone {
+        &self.timezone
+    }
+
+    pub fn now(&self) -> &Zoned {
+        &self.now
+    }
+
+    /// Pins the evaluation timestamp, so `now` is reproducible under test.
+    pub fn set_now(&mut self, now: Zoned) {
+        self.now = now;
     }
 
     pub fn get_variable(&self, name: &str) -> Result<&Value, VariableAccessError> {

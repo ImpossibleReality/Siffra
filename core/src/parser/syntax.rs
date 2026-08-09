@@ -219,6 +219,19 @@ fn add_expr(input: &str, expr: &ParsedExpr, out: &mut Vec<SyntaxSpan>) {
                 add_dimension(input, units, out);
             }
         }
+        // Date and time literals read as one number; only the zone is a unit.
+        ParsedExpr::Instant { instant, span } => {
+            out.push(syntax(SyntaxKind::Number, span.start()..span.end()));
+            if let Some((_, zone_span)) = &instant.zone {
+                out.push(syntax(SyntaxKind::Unit, zone_span.start()..zone_span.end()));
+            }
+        }
+        ParsedExpr::ClockTime { zone, span, .. } => {
+            out.push(syntax(SyntaxKind::Number, span.start()..span.end()));
+            if let Some((_, zone_span)) = zone {
+                out.push(syntax(SyntaxKind::Unit, zone_span.start()..zone_span.end()));
+            }
+        }
         ParsedExpr::Variable { span, .. } => {
             out.push(syntax(SyntaxKind::Variable, span.start()..span.end()));
         }

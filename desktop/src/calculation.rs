@@ -1,6 +1,8 @@
 use siffra::evaluation::{SiffraState, evaluate_line};
 use siffra::parser::{ParsedDimension, ParsedExpr, ParsedLine, parse_line};
-use siffra::representations::{Currency, Dimension, Float, Unit, Value};
+use siffra::representations::{
+    Currency, Dimension, Float, FormattedValue, Unit, Value, format_value,
+};
 use std::collections::{BTreeSet, HashMap, HashSet, hash_map::DefaultHasher};
 use std::hash::{Hash, Hasher};
 
@@ -9,6 +11,9 @@ pub enum LineOutput {
     Value {
         string: String,
         repeating: bool,
+        /// Only decimal numbers may be rounded to fit the result column;
+        /// instants and reading lists have shapes of their own.
+        numeric: bool,
     },
     Error {
         span: Option<(usize, usize)>,
@@ -35,23 +40,28 @@ pub struct Calculation {
 impl Calculation {
     pub fn evaluate(&mut self, input: &str) -> Vec<Option<LineOutput>> {
         let mut state = SiffraState::new();
+        let timezone = state.timezone().clone();
         let mut outputs = Vec::new();
         let mut previous_hash = 0;
         let mut used_hashes = HashSet::new();
-        let uses_currency_shorthands = input_uses_currency_shorthands(input);
+        let (uses_currency_shorthands, first_volatile) = document_flags(input);
 
-        for line in input.split('\n') {
+        for (index, line) in input.split('\n').enumerate() {
             let hash = line_hash(line, previous_hash);
             used_hashes.insert(hash);
 
-            let cached = self
-                .lines
-                .get(&hash)
-                .filter(|entry| {
-                    entry.line == line
-                        && entry.previous_hash == previous_hash
-                        && entry.uses_currency_shorthands == uses_currency_shorthands
+            // A line reading the clock, and every line whose state depends on
+            // it, has to be recomputed rather than answered from the cache.
+            let cacheable = first_volatile.is_none_or(|first| index < first);
+            let cached = cacheable
+                .then(|| {
+                    self.lines.get(&hash).filter(|entry| {
+                        entry.line == line
+                            && entry.previous_hash == previous_hash
+                            && entry.uses_currency_shorthands == uses_currency_shorthands
+                    })
                 })
+                .flatten()
                 .cloned();
 
             let output = if let Some(cached) = cached {
@@ -60,8 +70,15 @@ impl Calculation {
             } else {
                 let output = match evaluate_line(line, &mut state) {
                     Ok(Some(value)) => {
-                        let (string, repeating) = display_value(value, uses_currency_shorthands);
-                        Some(LineOutput::Value { string, repeating })
+                        let formatted = format_value(&value, Some(&timezone));
+                        let numeric = matches!(formatted, FormattedValue::Number { .. });
+                        let (string, repeating) =
+                            display_value(&value, formatted, uses_currency_shorthands);
+                        Some(LineOutput::Value {
+                            string,
+                            repeating,
+                            numeric,
+                        })
                     }
                     Ok(None) => None,
                     Err(err) => {
@@ -80,16 +97,18 @@ impl Calculation {
                     }
                 };
 
-                self.lines.insert(
-                    hash,
-                    CachedLine {
-                        line: line.to_string(),
-                        previous_hash,
-                        uses_currency_shorthands,
-                        output: output.clone(),
-                        state_after: state.clone(),
-                    },
-                );
+                if cacheable {
+                    self.lines.insert(
+                        hash,
+                        CachedLine {
+                            line: line.to_string(),
+                            previous_hash,
+                            uses_currency_shorthands,
+                            output: output.clone(),
+                            state_after: state.clone(),
+                        },
+                    );
+                }
                 output
             };
 
@@ -158,6 +177,7 @@ fn collect_expression_currencies(expression: &ParsedExpr, currencies: &mut BTree
                 collect_dimension_currencies(units, currencies);
             }
         }
+        ParsedExpr::Instant { .. } | ParsedExpr::ClockTime { .. } => {}
         ParsedExpr::Variable { .. } => {}
         ParsedExpr::FunctionCall { args, base, .. } => {
             if let Some(base) = base {
@@ -181,19 +201,46 @@ fn collect_expression_currencies(expression: &ParsedExpr, currencies: &mut BTree
     }
 }
 
-fn input_uses_currency_shorthands(input: &str) -> bool {
-    let mut currencies = BTreeSet::new();
+/// A line that reads the clock cannot be cached, and neither can the lines
+/// after it, whose state it feeds.
+fn expression_reads_the_clock(expression: &ParsedExpr) -> bool {
+    match expression {
+        ParsedExpr::Instant { instant, .. } => instant.keyword.is_some(),
+        // A wall clock is anchored to today's date, which is what decides the
+        // offset another zone reads it through.
+        ParsedExpr::ClockTime { .. } => true,
+        ParsedExpr::Number { .. } | ParsedExpr::Variable { .. } => false,
+        ParsedExpr::FunctionCall { args, base, .. } => {
+            base.as_deref().is_some_and(expression_reads_the_clock)
+                || args.iter().any(expression_reads_the_clock)
+        }
+        ParsedExpr::UnOpPre { rhs, .. } => expression_reads_the_clock(rhs),
+        ParsedExpr::UnOpPost { lhs, .. } => expression_reads_the_clock(lhs),
+        ParsedExpr::BinOp { lhs, rhs, .. } => {
+            expression_reads_the_clock(lhs) || expression_reads_the_clock(rhs)
+        }
+    }
+}
 
-    for line in input.lines() {
+/// Whether currency shorthand applies, and the first line (if any) from which
+/// results stop being cacheable.
+fn document_flags(input: &str) -> (bool, Option<usize>) {
+    let mut currencies = BTreeSet::new();
+    let mut first_volatile = None;
+
+    for (index, line) in input.split('\n').enumerate() {
         match parse_line(line) {
             Ok(ParsedLine::Expression(expression) | ParsedLine::Variable(_, expression)) => {
                 collect_expression_currencies(&expression, &mut currencies);
+                if first_volatile.is_none() && expression_reads_the_clock(&expression) {
+                    first_volatile = Some(index);
+                }
             }
             Ok(ParsedLine::Comment) | Ok(ParsedLine::Header(_)) | Err(_) => {}
         }
     }
 
-    currencies.len() <= 1
+    (currencies.len() <= 1, first_volatile)
 }
 
 fn currency_shorthand_and_remainder(dimension: &Dimension) -> Option<(&'static str, String)> {
@@ -218,9 +265,19 @@ fn currency_shorthand_and_remainder(dimension: &Dimension) -> Option<(&'static s
         .map(|shorthand| (shorthand, Dimension(remainder).to_string()))
 }
 
-fn display_value(val: Value, uses_currency_shorthands: bool) -> (String, bool) {
-    let repeating_candidate = val.is_repeating_candidate();
-    let (val, dim) = val.into_parts();
+fn display_value(
+    value: &Value,
+    formatted: FormattedValue,
+    uses_currency_shorthands: bool,
+) -> (String, bool) {
+    // Instants and reading lists are already rendered; only plain numbers get
+    // the contextual currency shorthand.
+    let FormattedValue::Number { text, unit } = &formatted else {
+        return (formatted.to_plain_string(), false);
+    };
+
+    let repeating_candidate = value.is_repeating_candidate();
+    let dim = value.dimension();
 
     let mut output = String::new();
 
@@ -232,9 +289,9 @@ fn display_value(val: Value, uses_currency_shorthands: bool) -> (String, bool) {
         output.push_str(shorthand);
     }
 
-    output.push_str(&val.to_string());
+    output.push_str(text);
 
-    let dim_string = dim.to_string();
+    let dim_string = unit.clone().unwrap_or_default();
 
     if let Some((_, remainder)) = currency_shorthand {
         if let Some(denominator) = remainder.strip_prefix("1/") {
@@ -296,6 +353,44 @@ mod tests {
         let edited = calculation.evaluate("a = 3\na + 3");
         assert_eq!(calculation.lines.len(), 2);
         assert_eq!(value_of(&edited[1]), Some("6"));
+    }
+
+    #[test]
+    fn a_line_that_reads_the_clock_is_never_answered_from_the_cache() {
+        let mut calculation = Calculation::default();
+
+        // The clock line and everything downstream of its state are recomputed;
+        // the lines above it still cache normally.
+        calculation.evaluate("a = 2\nnow\na + 1");
+        assert_eq!(calculation.lines.len(), 1);
+        assert!(
+            calculation
+                .lines
+                .values()
+                .all(|entry| entry.line == "a = 2")
+        );
+
+        calculation.evaluate("a = 2\n2 + 2\na + 1");
+        assert_eq!(calculation.lines.len(), 3);
+    }
+
+    #[test]
+    fn dates_and_spans_are_marked_as_non_numeric_output() {
+        let mut calculation = Calculation::default();
+        let outputs = calculation.evaluate("2024-02-10\n2024-02-10 to 2024-03-10\n2 + 2");
+
+        assert!(matches!(
+            outputs[0],
+            Some(LineOutput::Value { numeric: false, .. })
+        ));
+        assert!(matches!(
+            outputs[1],
+            Some(LineOutput::Value { numeric: false, .. })
+        ));
+        assert!(matches!(
+            outputs[2],
+            Some(LineOutput::Value { numeric: true, .. })
+        ));
     }
 
     #[test]

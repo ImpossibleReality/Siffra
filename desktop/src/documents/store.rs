@@ -1,10 +1,9 @@
 //! Persistence store for saved calculations. Every document is a whole editor buffer which is stored on disk using redb. The record format is stable so documents already saved on disk remain readable.
 
-use chrono::{Local, TimeZone};
+use jiff::{Timestamp, tz::TimeZone};
 use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Documents keyed by id, encoded as JSON.
 const DOCUMENTS: TableDefinition<u64, &str> = TableDefinition::new("documents");
@@ -74,17 +73,14 @@ fn normalized(mut document: Document) -> Document {
 }
 
 pub fn now_millis() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
+    Timestamp::now().as_millisecond()
 }
 
 pub fn date_title(created_at: i64) -> String {
-    match Local.timestamp_millis_opt(created_at).single() {
-        Some(dt) => dt.format("%b %-d, %Y at %-I:%M %p").to_string(),
-        None => "Untitled".to_string(),
-    }
+    Timestamp::from_millisecond(created_at)
+        .map(|timestamp| timestamp.to_zoned(TimeZone::system()))
+        .map(|date| date.strftime("%b %-d, %Y at %-I:%M %p").to_string())
+        .unwrap_or_else(|_| "Untitled".to_string())
 }
 
 pub fn database_path() -> Option<PathBuf> {

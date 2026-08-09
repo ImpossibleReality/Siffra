@@ -90,6 +90,9 @@ fn axes(unit: &Unit) -> BTreeMap<BaseDimension, i64> {
         Unit::Currency(_) => {
             *map.entry(BaseDimension::Currency).or_default() += 1;
         }
+        Unit::Instant(_) | Unit::Clock(_) => {
+            *map.entry(BaseDimension::Time).or_default() += 1;
+        }
         Unit::Prefixed(_, inner) => return axes(inner),
     }
     map.retain(|_, e| *e != 0);

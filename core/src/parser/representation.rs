@@ -1,9 +1,12 @@
 use crate::error::SiffraExecutionError;
 use crate::parser::Span;
 use crate::representations::Compound;
+use crate::representations::{
+    ClockLiteral, Expression, Float, InstantKeyword, InstantLiteral, PercentageOperator, TimeZone,
+    Value,
+};
 use crate::representations::{Dimension, Unit};
-use crate::representations::{Expression, Float, PercentageOperator, Value};
-use crate::siffra_try;
+use crate::{siffra_error, siffra_try};
 use std::ops::Neg;
 
 pub const SCALAR_UNIT_ALIASES: &[&str] = &["unitless", "number", "scalar", "#"];
@@ -30,11 +33,44 @@ pub struct ParsedDimension {
     pub span: Span,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ParsedDate {
+    pub year: Option<i16>,
+    pub month: i8,
+    pub day: i8,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ParsedTime {
+    pub hour: i8,
+    pub minute: i8,
+    pub second: Option<i8>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ParsedInstant {
+    pub keyword: Option<InstantKeyword>,
+    pub date: Option<ParsedDate>,
+    pub time: Option<ParsedTime>,
+    pub zone: Option<(String, Span)>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ParsedExpr {
     Number {
         value: String,
         units: Option<ParsedDimension>,
+        span: Span,
+    },
+    /// A point on the calendar: date, datetime, zoned datetime, or keyword.
+    Instant {
+        instant: ParsedInstant,
+        span: Span,
+    },
+    /// A wall-clock reading, with the zone it is read in when one is named.
+    ClockTime {
+        time: ParsedTime,
+        zone: Option<(String, Span)>,
         span: Span,
     },
     Variable {
@@ -82,6 +118,7 @@ pub enum OpPost {
 pub enum Op {
     Add,
     Subtract,
+    Interval,
     Multiply,
     Divide,
     Exponent,
@@ -181,6 +218,33 @@ impl TryFrom<ParsedDimension> for Dimension {
     }
 }
 
+fn parse_zone(zone: Option<(String, Span)>) -> Result<Option<TimeZone>, SiffraExecutionError> {
+    match zone {
+        Some((name, span)) => Ok(Some(siffra_try!(
+            TimeZone::parse(&name).ok_or(()),
+            "Timezone Error",
+            format!("'{name}' is not a known timezone"),
+            Some(span)
+        ))),
+        None => Ok(None),
+    }
+}
+
+fn checked_time(time: ParsedTime, span: Span) -> Result<(i8, i8, i8), SiffraExecutionError> {
+    let second = time.second.unwrap_or(0);
+    if time.hour > 23 || time.minute > 59 || second > 59 {
+        return Err(siffra_error!(
+            "Time Error",
+            format!(
+                "{:02}:{:02}:{:02} is not a valid time of day",
+                time.hour, time.minute, second
+            ),
+            Some(span)
+        ));
+    }
+    Ok((time.hour, time.minute, second))
+}
+
 impl TryFrom<ParsedExpr> for Expression {
     type Error = SiffraExecutionError;
 
@@ -195,6 +259,27 @@ impl TryFrom<ParsedExpr> for Expression {
 
                 Ok(Expression::constant(Value::new(num, dimension)).with_span(span))
             }
+            ParsedExpr::Instant { instant, span } => {
+                let zone = parse_zone(instant.zone)?;
+                let time = match instant.time {
+                    Some(time) => Some(checked_time(time, span)?),
+                    None => None,
+                };
+                Ok(Expression::instant(InstantLiteral {
+                    keyword: instant.keyword,
+                    date: instant.date.map(|date| (date.year, date.month, date.day)),
+                    time,
+                    has_seconds: instant.time.is_some_and(|time| time.second.is_some()),
+                    zone,
+                })
+                .with_span(span))
+            }
+            ParsedExpr::ClockTime { time, zone, span } => Ok(Expression::clock(ClockLiteral {
+                time: checked_time(time, span)?,
+                has_seconds: time.second.is_some(),
+                zone: parse_zone(zone)?,
+            })
+            .with_span(span)),
             ParsedExpr::Variable { name, span } => Ok(Expression::variable(name).with_span(span)),
             ParsedExpr::FunctionCall {
                 name,
@@ -247,6 +332,7 @@ impl TryFrom<ParsedExpr> for Expression {
                 match op {
                     Op::Add => Ok(Expression::add(*lhs, *rhs).with_span(span)),
                     Op::Subtract => Ok(Expression::subtract(*lhs, *rhs).with_span(span)),
+                    Op::Interval => Ok(Expression::interval(*lhs, *rhs).with_span(span)),
                     Op::Multiply => Ok(Expression::multiply(*lhs, *rhs).with_span(span)),
                     Op::Divide => Ok(Expression::divide(*lhs, *rhs).with_span(span)),
                     Op::Exponent => Ok(Expression::exponent(*lhs, *rhs).with_span(span)),

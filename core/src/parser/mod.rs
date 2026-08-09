@@ -1,6 +1,7 @@
 pub mod representation;
 mod span;
 mod syntax;
+mod temporal;
 
 pub use representation::*;
 pub use span::Span;
@@ -13,9 +14,32 @@ use chumsky::prelude::*;
 use chumsky::text;
 
 const RESERVED_VARS: &[&str] = &[
-    "plus", "minus", "times", "of", "over", "by", "divided", "divide", "in", "as", "to", "into",
-    "let", "on", "off", "what", "is",
+    "plus",
+    "minus",
+    "times",
+    "of",
+    "over",
+    "by",
+    "divided",
+    "divide",
+    "in",
+    "as",
+    "to",
+    "into",
+    "let",
+    "on",
+    "off",
+    "what",
+    "is",
+    "now",
+    "today",
+    "tomorrow",
+    "yesterday",
 ];
+
+/// The words that introduce a conversion target — or, when what follows is not
+/// a dimension, the far endpoint of an interval.
+const CONVERSION_KEYWORDS: &[&str] = &["into", "in", "as", "to"];
 
 const KNOWN_FUNCS: &[&str] = &[
     "log", "ln", "sqrt", "sin", "cos", "tan", "asin", "acos", "atan", "root", "exp", "abs",
@@ -62,6 +86,10 @@ fn blank_comments(input: &str) -> String {
 
 type Extra<'a> = extra::Err<Rich<'a, char>>;
 type Boxed<'a, O> = chumsky::Boxed<'a, 'a, &'a str, O, Extra<'a>>;
+
+fn is_known_unit(name: &str) -> bool {
+    SCALAR_UNIT_ALIASES.contains(&name) || crate::representations::Unit::from_str(name).is_ok()
+}
 
 /// Converts a chumsky span into a siffra [`Span`].
 fn to_span(span: SimpleSpan<usize>) -> Span {
@@ -192,6 +220,9 @@ fn line_parser<'a>() -> impl Parser<'a, &'a str, ParsedLine, Extra<'a>> {
     .boxed();
 
     let chemical_str = chemical_parser();
+    let instant_literal = temporal::instant_literal();
+    let clock_literal = temporal::clock_literal();
+    let temporal_literal = temporal::temporal_literal();
 
     let unit_atom: Boxed<'a, ParsedUnit> = unit_name
         .clone()
@@ -326,8 +357,13 @@ fn line_parser<'a>() -> impl Parser<'a, &'a str, ParsedLine, Extra<'a>> {
             })
             .boxed();
 
-    let units: Boxed<'a, ParsedDimension> =
-        choice((symbolic_units, bracketed_units, bare_units)).boxed();
+    let units: Boxed<'a, ParsedDimension> = choice((
+        symbolic_units,
+        bracketed_units,
+        temporal::zone_dimension(),
+        bare_units,
+    ))
+    .boxed();
 
     let dimensional_number: Boxed<'a, ParsedExpr> = number_str
         .clone()
@@ -364,12 +400,39 @@ fn line_parser<'a>() -> impl Parser<'a, &'a str, ParsedLine, Extra<'a>> {
         })
         .boxed();
 
-    let convert: Boxed<'a, ParsedDimension> = sp1
+    let conversion_keyword: Boxed<'a, ()> = sp1
         .clone()
-        .ignore_then(choice((kw("into"), kw("in"), kw("as"), kw("to"))))
+        .ignore_then(choice(
+            CONVERSION_KEYWORDS
+                .iter()
+                .map(|word| kw(word))
+                .collect::<Vec<_>>(),
+        ))
         .ignore_then(sp1.clone())
-        .ignore_then(units.clone())
+        .ignored()
         .boxed();
+
+    // A conversion target has to name units that exist. An unknown name is not
+    // a failed conversion but a different reading of the line, so it falls
+    // through to the interval endpoint that `launch to arrival` needs.
+    let known_units: Boxed<'a, ParsedDimension> = units
+        .clone()
+        .try_map(|dimension: ParsedDimension, span: SimpleSpan| {
+            if dimension
+                .numerator
+                .iter()
+                .chain(&dimension.denominator)
+                .all(|(unit, _)| is_known_unit(&unit.name))
+            {
+                Ok(dimension)
+            } else {
+                Err(Rich::custom(span, "not a unit"))
+            }
+        })
+        .boxed();
+
+    let convert: Boxed<'a, ParsedDimension> =
+        conversion_keyword.clone().ignore_then(known_units).boxed();
 
     let variable: Boxed<'a, ParsedExpr> = text::ascii::ident()
         .try_map(|name: &str, span: SimpleSpan| {
@@ -532,6 +595,10 @@ fn line_parser<'a>() -> impl Parser<'a, &'a str, ParsedLine, Extra<'a>> {
             let atom = choice((
                 paren_expr.clone(),
                 function.clone(),
+                // Digit-led temporal literals must win over the arithmetic
+                // reading of the same characters.
+                instant_literal.clone(),
+                clock_literal.clone(),
                 dollar_number.clone(),
                 dimensional_number.clone(),
                 ungrouped_function,
@@ -648,7 +715,21 @@ fn line_parser<'a>() -> impl Parser<'a, &'a str, ParsedLine, Extra<'a>> {
         enum MulTail {
             Arithmetic(Op, Span, ParsedExpr),
             Convert(ParsedDimension, Span),
+            Interval(ParsedExpr, Span),
         }
+
+        // `to` and its synonyms are one operator with two readings: a unit to
+        // convert into, or the far endpoint of an interval. A written-out date
+        // is tried first because month names such as `dec` are also units;
+        // anything else a dimension cannot claim falls through to an endpoint.
+        let interval_endpoint = conversion_keyword
+            .clone()
+            .ignore_then(temporal_literal.clone())
+            .boxed();
+        let interval_expression = conversion_keyword
+            .clone()
+            .ignore_then(product.clone())
+            .boxed();
 
         // Conversion is a postfix at multiplication precedence.
         let mul_tail = choice((
@@ -656,9 +737,11 @@ fn line_parser<'a>() -> impl Parser<'a, &'a str, ParsedLine, Extra<'a>> {
                 .clone()
                 .then(product.clone())
                 .map(|((op, span), rhs)| MulTail::Arithmetic(op, span, rhs)),
+            interval_endpoint.map_with(|rhs, e| MulTail::Interval(rhs, to_span(e.span()))),
             convert
                 .clone()
                 .map_with(|dim, e| MulTail::Convert(dim, to_span(e.span()))),
+            interval_expression.map_with(|rhs, e| MulTail::Interval(rhs, to_span(e.span()))),
         ))
         .boxed();
 
@@ -737,6 +820,12 @@ fn line_parser<'a>() -> impl Parser<'a, &'a str, ParsedLine, Extra<'a>> {
                             op: OpPost::Convert(dim),
                             span,
                         },
+                        MulTail::Interval(rhs, span) => ParsedExpr::BinOp {
+                            lhs: Box::new(lhs),
+                            op: Op::Interval,
+                            rhs: Box::new(rhs),
+                            span,
+                        },
                     };
                 }
                 lhs
@@ -765,23 +854,31 @@ fn line_parser<'a>() -> impl Parser<'a, &'a str, ParsedLine, Extra<'a>> {
 
     let rest_of_line: Boxed<'a, String> = any().repeated().collect::<String>().boxed();
 
-    // `->` converts the complete line and must be last.
-    let arrow_conversion = sp
+    // `->` converts the complete line and must be last. A chain of them reads
+    // left to right, which is how a span is asked for one reading after another.
+    let arrow_step = sp
         .clone()
         .ignore_then(just("->").map_with(|_, e| to_span(e.span())))
         .then_ignore(sp.clone())
         .then(units.clone())
+        .boxed();
+
+    let arrow_conversion = arrow_step
+        .repeated()
+        .at_least(1)
+        .collect::<Vec<_>>()
         .then_ignore(sp.clone())
         .then(rest_of_line)
         .validate(
-            |((arrow_span, dim), rest): ((Span, ParsedDimension), String), _, emitter| {
+            |(steps, rest): (Vec<(Span, ParsedDimension)>, String), _, emitter| {
                 if !rest.is_empty() {
+                    let arrow_span = steps.last().expect("at least one arrow").0;
                     emitter.emit(Rich::custom(
                         SimpleSpan::from(arrow_span.start()..arrow_span.end()),
                         "`-> [Unit]` must be at the end of a line",
                     ));
                 }
-                (dim, arrow_span)
+                steps
             },
         )
         .or_not()
@@ -790,16 +887,17 @@ fn line_parser<'a>() -> impl Parser<'a, &'a str, ParsedLine, Extra<'a>> {
     let line_expr: Boxed<'a, ParsedExpr> = expr
         .clone()
         .then(arrow_conversion)
-        .map(|(e, conversion)| match conversion {
-            Some((dim, arrow_span)) => {
+        .map(|(e, conversions)| {
+            let mut lhs = e;
+            for (arrow_span, dim) in conversions.into_iter().flatten() {
                 let span = arrow_span.merge(dim.span);
-                ParsedExpr::UnOpPost {
-                    lhs: Box::new(e),
+                lhs = ParsedExpr::UnOpPost {
+                    lhs: Box::new(lhs),
                     op: OpPost::Convert(dim),
                     span,
-                }
+                };
             }
-            None => e,
+            lhs
         })
         .boxed();
 
@@ -1145,6 +1243,109 @@ mod tests {
             let arrow = input.find("->").unwrap();
             assert_eq!(error.span(), Some((arrow, arrow + 2)));
         }
+    }
+
+    #[test]
+    fn parses_temporal_literals() {
+        for input in [
+            "2024-02-10",
+            "2024-02-10 12:00",
+            "2024-02-10 12:00:30",
+            "2024-02-10 12:00 America/Los_Angeles",
+            "2024-02-10 12:00 UTC",
+            "2024-02-10 12:00 +05:30",
+            "5pm UTC on feb 2 2026",
+            "5pm UTC today",
+            "5pm UTC",
+            "5pm today",
+            "now",
+            "today + 1 day",
+            "9:00",
+            "17:00 - 9:15",
+        ] {
+            parse(input);
+        }
+    }
+
+    #[test]
+    fn a_temporal_literal_after_a_conversion_keyword_makes_a_range() {
+        let ParsedLine::Expression(ParsedExpr::BinOp {
+            op: Op::Interval,
+            lhs,
+            rhs,
+            ..
+        }) = parse("2024-02-10 to 2024-03-10")
+        else {
+            panic!("a range should lower to an interval");
+        };
+
+        let month = |expr: &ParsedExpr| match expr {
+            ParsedExpr::Instant { instant, .. } => instant.date.expect("a dated literal").month,
+            other => panic!("expected an instant, got {other:?}"),
+        };
+        assert_eq!(month(&lhs), 2);
+        assert_eq!(month(&rhs), 3);
+    }
+
+    #[test]
+    fn a_range_endpoint_may_be_any_expression_a_unit_cannot_claim() {
+        for input in ["now to launch", "9:00 to (8:00 + 3 h)", "today to tomorrow"] {
+            let ParsedLine::Expression(ParsedExpr::BinOp {
+                op: Op::Interval, ..
+            }) = parse(input)
+            else {
+                panic!("{input:?} should lower to an interval");
+            };
+        }
+    }
+
+    #[test]
+    fn a_dimension_after_a_conversion_keyword_is_still_a_conversion() {
+        for input in [
+            "2024-02-10 to 2024-03-10 in days",
+            "5 m in km",
+            "3 in in cm",
+        ] {
+            let ParsedLine::Expression(expression) = parse(input) else {
+                panic!("{input:?} should be an expression");
+            };
+            assert!(
+                matches!(
+                    expression,
+                    ParsedExpr::UnOpPost {
+                        op: OpPost::Convert(_),
+                        ..
+                    }
+                ),
+                "{input:?} should end in a conversion"
+            );
+        }
+    }
+
+    #[test]
+    fn zone_names_never_claim_a_compound_unit() {
+        parse("5 m in m/s");
+        parse("100 km / 2 h in mph");
+        assert!(parse_line("2024-02-10 12:00 Bogus/Zone").is_err());
+    }
+
+    #[test]
+    fn arrow_conversions_chain_but_stay_at_the_end_of_the_line() {
+        let ParsedLine::Expression(ParsedExpr::UnOpPost { lhs, op, .. }) =
+            parse("2024-02-10 to 2024-03-10 -> day -> hour")
+        else {
+            panic!("the last arrow should be the outer conversion");
+        };
+        assert!(matches!(op, OpPost::Convert(_)));
+        assert!(matches!(
+            *lhs,
+            ParsedExpr::UnOpPost {
+                op: OpPost::Convert(_),
+                ..
+            }
+        ));
+
+        assert!(parse_line("5 m -> cm -> mm + 2").is_err());
     }
 
     #[test]

@@ -190,9 +190,9 @@ pub fn parse_si_prefixed<T: SiPrefixable>(s: &str) -> Option<(Prefix, T)> {
                 && let Some(unit) = T::PREFIXABLE
                     .iter()
                     .find(|unit| unit.symbol_forms().contains(&rest))
-                {
-                    return Some((*prefix, *unit));
-                }
+            {
+                return Some((*prefix, *unit));
+            }
         }
         for name in prefix.names() {
             if let Some(rest) = s.strip_prefix(name) {
