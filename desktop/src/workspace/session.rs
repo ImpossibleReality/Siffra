@@ -7,7 +7,7 @@ use crate::search::{SearchEvent, SearchModal};
 use crate::updater;
 use gpui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, InteractiveElement, IntoElement,
-    ParentElement, Render, Styled, Subscription, Task, Window, actions, div,
+    ParentElement, Render, Styled, Subscription, Task, Window, actions, div, px,
 };
 use std::time::Duration;
 
@@ -460,7 +460,7 @@ impl Render for Workspace {
                     .flex()
                     .flex_col()
                     .child(self.toolbar.clone())
-                    .child(div().flex_1().child(self.editor.clone())),
+                    .child(div().flex_1().min_h(px(0.0)).child(self.editor.clone())),
             )
             .children(self.help_open.then(|| self.help.clone()))
             .children(self.search_open.then(|| self.search.clone()))

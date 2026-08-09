@@ -556,8 +556,7 @@ impl Editor {
 
         let result_height = px(theme::ROOT_LINE_HEIGHT + 2.0 * theme::OUTPUT_PADDING_Y);
         let row_height = layout.lines.get(index)?.height;
-        let row_top =
-            px(theme::NAV_HEIGHT + theme::GUTTER) + layout.line_top(index) + self.scroll.offset().y;
+        let row_top = px(theme::GUTTER) + layout.line_top(index) + self.scroll.offset().y;
         let bottom = row_top + (row_height - result_height) / 2.0 + result_height;
 
         let panel = below_right(bottom, px(theme::GUTTER))
