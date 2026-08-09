@@ -50,7 +50,7 @@ fn transcendental_functions_enforce_and_convert_units() {
 fn stoichiometric_bridge_matches_every_term_and_power() {
     assert!(one("1 [g H2O] in [mol H2O * m]").starts_with("ERR: Unit Error"));
     assert!(one("1 [g H2O^2] in [mol H2O]").starts_with("ERR: Unit Error"));
-    assert_eq!(one("18.01528 g H2O in mol H2O"), "1 mol H2O");
+    assert_eq!(one("18.015 g H2O in mol H2O"), "1 mol H2O");
 }
 
 #[test]

@@ -10,7 +10,11 @@ repository.workspace = true
 
 [dependencies]
 chumsky = "0.13"
-periodic-table-on-an-enum = "0.3.2"
+mendeleev = { version = "=0.8.4", default-features = false, features = [
+    "atomic_weight",
+    "element_list",
+    "symbol",
+] }
 astro-float = { version = "0.9.6", default-features = false, features = [
     "std",
 ] }
