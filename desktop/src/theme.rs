@@ -3,15 +3,13 @@
 
 use gpui::{Hsla, Pixels, Rgba, px, rgb, rgba};
 
-/// Base size for rem-like measurements.
 pub const REM: f32 = 15.0;
 
-/// A line-height length inherited by controls that do not set their own.
 pub const ROOT_LINE_HEIGHT: f32 = 24.0;
 
 pub const NAV_HEIGHT: f32 = 2.1 * REM;
 
-/// Shared inset that keeps input, rulers, and results on one row.
+/// Inset that keeps input, rulers, and results on one row.
 pub const GUTTER: f32 = REM;
 
 pub const LINE_HEIGHT_RATIO: f32 = 1.8;
@@ -30,7 +28,6 @@ pub const RULER_THICKNESS: f32 = 2.0;
 pub const RULER_GAP_LEFT: f32 = 10.0;
 pub const RULER_GAP_RIGHT: f32 = 5.0;
 
-/// Rulers are hidden when the two columns cannot read separately.
 pub const RULER_MIN_WINDOW_WIDTH: f32 = 500.0;
 
 /// Heading rule geometry in the gutter.
@@ -49,33 +46,20 @@ pub const SEPARATOR_GRAB_PADDING: f32 = 0.5 * REM;
 /// Separator fade duration in seconds.
 pub const SEPARATOR_FADE: f32 = 0.2;
 
-/// The overlay scrollbar down the right edge, drawn only once the calculation
-/// is taller than the window. It sits over the content rather than taking a
-/// column of its own, so the results keep the width they had.
 pub const SCROLLBAR_WIDTH: f32 = 6.0;
 pub const SCROLLBAR_INSET: f32 = 4.0;
-/// A thumb any shorter than this is hard to catch, however long the document.
 pub const SCROLLBAR_MIN_THUMB: f32 = 28.0;
 
-/// The radius the platform rounds the window's corners to. Nothing is drawn
-/// there — the frame clips it — so anything running down to the bottom edge has
-/// to stop short of the arc. Sized for the rounding macOS 26 uses; it is the one
-/// number to change if the scrollbar ever sits too high or too low in a corner.
+/// The radius the platform rounds the window's corners to -- used for scrollbar padding
 pub const WINDOW_CORNER_RADIUS: f32 = 24.0;
 
-/// How far up from the bottom edge something `inset` from the right edge has to
-/// stop to clear the corner. The corner's arc is a quarter circle centred a
-/// radius in from both edges, so at a horizontal distance `inset` from the right
-/// edge it has already fallen this far short of the bottom.
 pub fn corner_clearance(inset: f32) -> f32 {
     let radius = WINDOW_CORNER_RADIUS;
     let across = (radius - inset).clamp(0.0, radius);
     radius - (radius * radius - across * across).sqrt()
 }
 
-/// The sliver of selection drawn on a blank line, which has no text of its own
-/// to colour. Narrower than a space, because what is selected there is a line
-/// break and not a character.
+/// The sliver of selection drawn on a selected blank line
 pub const EMPTY_LINE_SELECTION_WIDTH: f32 = 3.0;
 
 pub const BACKGROUND: Rgba = Rgba {
