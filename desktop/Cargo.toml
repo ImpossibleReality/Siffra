@@ -21,7 +21,7 @@ binaries-dir = "../target/release"
 out-dir = "../target/release/bundle"
 binaries = [{ path = "siffra-desktop", main = true }]
 
-icons = ["assets/icons/icon.icns", "assets/icons/icon.png"]
+icons = ["assets/app_icons/icon.icns", "assets/app_icons/icon.png"]
 license-file = "../LICENCE.txt"
 
 [dependencies]
