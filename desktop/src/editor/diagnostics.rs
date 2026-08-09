@@ -91,6 +91,7 @@ pub(super) fn carry_edit_times<T: std::marker::Copy>(
     }
 
     let mut edited = vec![Some(now); next.len()];
+    #[allow(clippy::needless_range_loop)]
     for index in 0..prefix {
         edited[index] = times.get(index).copied().flatten();
     }

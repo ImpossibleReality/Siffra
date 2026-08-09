@@ -354,7 +354,7 @@ pub fn evaluate_expr(
                         .convert(&Dimension::default())
                         .unwrap_or_else(|| val.with_units(Dimension::default())));
                 }
-                return Ok(val.with_units(Dimension::default()));
+                Ok(val.with_units(Dimension::default()))
             } else if val.dimension().is_unitless() {
                 // Bare values scale into scalar targets and otherwise only gain units.
                 if dim.dimensionality().is_empty() {
@@ -362,7 +362,7 @@ pub fn evaluate_expr(
                         .convert(dim)
                         .unwrap_or_else(|| val.with_units(dim.clone())));
                 }
-                return Ok(val.with_units(dim.clone()));
+                Ok(val.with_units(dim.clone()))
             } else {
                 Ok(siffra_try!(
                     val.convert(dim).ok_or(()),

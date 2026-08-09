@@ -1,7 +1,7 @@
 #[macro_export]
 macro_rules! ratio {
     ($num:literal / $denom:literal) => {{
-        use crate::representations::Float;
+        use $crate::representations::Float;
         &Float::parse(stringify!($num)).unwrap() / &Float::parse(stringify!($denom)).unwrap()
     }};
 }
@@ -16,7 +16,7 @@ macro_rules! ratio {
 #[macro_export]
 macro_rules! quantity {
     ($name:ident, [$(($unit_name:ident, $unit_ratio:expr, $default_shorthand:expr, $default_longhand:expr, $($unit_aliases:expr),*)),*]) => {
-        use crate::representations::Float;
+        use $crate::representations::Float;
         use std::str::FromStr;
 
         #[derive(Debug, Clone, Copy, PartialEq)]

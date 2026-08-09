@@ -28,7 +28,7 @@ impl From<f64> for Value {
 impl Value {
     pub fn new(value: Float, dimension: Option<Dimension>) -> Self {
         Self {
-            dimension: dimension.unwrap_or(Default::default()),
+            dimension: dimension.unwrap_or_default(),
             value,
             repeating_candidate: false,
         }
@@ -148,11 +148,10 @@ impl Value {
             repeating_candidate: self.repeating_candidate || other.repeating_candidate,
         };
 
-        if let Some(target) = self.dimension.collapse_target(&other.dimension) {
-            if let Some(collapsed) = result.convert(&target) {
+        if let Some(target) = self.dimension.collapse_target(&other.dimension)
+            && let Some(collapsed) = result.convert(&target) {
                 result = collapsed;
             }
-        }
 
         Some(result)
     }

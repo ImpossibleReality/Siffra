@@ -57,9 +57,6 @@ impl SiffraExecutionError {
         self.span
     }
     pub fn location(&self) -> Option<String> {
-        match &self.location {
-            Some((file, line)) => Some(format!("{}:{}", file, line)),
-            None => None,
-        }
+        self.location.as_ref().map(|(file, line)| format!("{}:{}", file, line))
     }
 }

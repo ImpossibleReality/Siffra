@@ -191,7 +191,7 @@ impl TryFrom<ParsedExpr> for Expression {
                     Some(units) => Some(Dimension::try_from(units)?),
                     None => None,
                 };
-                let num = siffra_try!(Float::parse(&*value), "Error parsing number", Some(span));
+                let num = siffra_try!(Float::parse(&value), "Error parsing number", Some(span));
 
                 Ok(Expression::constant(Value::new(num, dimension)).with_span(span))
             }

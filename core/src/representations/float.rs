@@ -21,8 +21,8 @@ pub struct Float(BigFloat);
 impl Float {
     pub fn parse(s: &str) -> Result<Self, ()> {
         let mut cache = const_cache().lock().unwrap();
-        let s = s.trim().replace('_', "").replace(',', "");
-        let res = BigFloat::parse(&s, Radix::Dec, PRECISION, ROUNDING_MODE, &mut *cache);
+        let s = s.trim().replace(['_', ','], "");
+        let res = BigFloat::parse(&s, Radix::Dec, PRECISION, ROUNDING_MODE, &mut cache);
         if res.is_nan() { Err(()) } else { Ok(Self(res)) }
     }
 
@@ -40,7 +40,7 @@ impl Float {
     pub fn pow(&self, other: &Self) -> Self {
         if other.is_integer() {
             let mut cache = const_cache().lock().unwrap();
-            return Self(self.0.pow(&other.0, PRECISION, ROUNDING_MODE, &mut *cache));
+            return Self(self.0.pow(&other.0, PRECISION, ROUNDING_MODE, &mut cache));
         }
         let ln_x = self.ln();
         let product = other * &ln_x;
@@ -57,12 +57,12 @@ impl Float {
 
     pub fn ln(&self) -> Self {
         let mut cache = const_cache().lock().unwrap();
-        Self(self.0.ln(PRECISION, ROUNDING_MODE, &mut *cache))
+        Self(self.0.ln(PRECISION, ROUNDING_MODE, &mut cache))
     }
 
     pub fn log10(&self) -> Self {
         let mut cache = const_cache().lock().unwrap();
-        Self(self.0.log10(PRECISION, ROUNDING_MODE, &mut *cache))
+        Self(self.0.log10(PRECISION, ROUNDING_MODE, &mut cache))
     }
 
     pub fn sqrt(&self) -> Self {
@@ -71,32 +71,32 @@ impl Float {
 
     pub fn sin(&self) -> Self {
         let mut cache = const_cache().lock().unwrap();
-        Self(self.0.sin(PRECISION, ROUNDING_MODE, &mut *cache))
+        Self(self.0.sin(PRECISION, ROUNDING_MODE, &mut cache))
     }
 
     pub fn cos(&self) -> Self {
         let mut cache = const_cache().lock().unwrap();
-        Self(self.0.cos(PRECISION, ROUNDING_MODE, &mut *cache))
+        Self(self.0.cos(PRECISION, ROUNDING_MODE, &mut cache))
     }
 
     pub fn tan(&self) -> Self {
         let mut cache = const_cache().lock().unwrap();
-        Self(self.0.tan(PRECISION, ROUNDING_MODE, &mut *cache))
+        Self(self.0.tan(PRECISION, ROUNDING_MODE, &mut cache))
     }
 
     pub fn asin(&self) -> Self {
         let mut cache = const_cache().lock().unwrap();
-        Self(self.0.asin(PRECISION, ROUNDING_MODE, &mut *cache))
+        Self(self.0.asin(PRECISION, ROUNDING_MODE, &mut cache))
     }
 
     pub fn acos(&self) -> Self {
         let mut cache = const_cache().lock().unwrap();
-        Self(self.0.acos(PRECISION, ROUNDING_MODE, &mut *cache))
+        Self(self.0.acos(PRECISION, ROUNDING_MODE, &mut cache))
     }
 
     pub fn atan(&self) -> Self {
         let mut cache = const_cache().lock().unwrap();
-        Self(self.0.atan(PRECISION, ROUNDING_MODE, &mut *cache))
+        Self(self.0.atan(PRECISION, ROUNDING_MODE, &mut cache))
     }
 
     pub fn atan2(&self, x: &Self) -> Option<Self> {
@@ -119,22 +119,22 @@ impl Float {
 
     pub fn sinh(&self) -> Self {
         let mut cache = const_cache().lock().unwrap();
-        Self(self.0.sinh(PRECISION, ROUNDING_MODE, &mut *cache))
+        Self(self.0.sinh(PRECISION, ROUNDING_MODE, &mut cache))
     }
 
     pub fn cosh(&self) -> Self {
         let mut cache = const_cache().lock().unwrap();
-        Self(self.0.cosh(PRECISION, ROUNDING_MODE, &mut *cache))
+        Self(self.0.cosh(PRECISION, ROUNDING_MODE, &mut cache))
     }
 
     pub fn tanh(&self) -> Self {
         let mut cache = const_cache().lock().unwrap();
-        Self(self.0.tanh(PRECISION, ROUNDING_MODE, &mut *cache))
+        Self(self.0.tanh(PRECISION, ROUNDING_MODE, &mut cache))
     }
 
     pub fn exp(&self) -> Self {
         let mut cache = const_cache().lock().unwrap();
-        Self(self.0.exp(PRECISION, ROUNDING_MODE, &mut *cache))
+        Self(self.0.exp(PRECISION, ROUNDING_MODE, &mut cache))
     }
 
     pub fn recip(&self) -> Self {
@@ -228,14 +228,14 @@ impl Float {
         }
 
         const C: [f64; 9] = [
-            0.999_999_999_999_809_93,
+            0.999_999_999_999_809_9,
             676.520_368_121_885_1,
             -1_259.139_216_722_402_8,
-            771.323_428_777_653_13,
-            -176.615_029_162_140_59,
+            771.323_428_777_653_1,
+            -176.615_029_162_140_6,
             12.507_343_278_686_905,
             -0.138_571_095_265_720_12,
-            9.984_369_578_019_571_6e-6,
+            9.984_369_578_019_572e-6,
             1.505_632_735_149_311_6e-7,
         ];
 
@@ -261,11 +261,11 @@ impl Display for Float {
         let mut cache = const_cache().lock().unwrap();
         let string = self
             .0
-            .format(Radix::Dec, ROUNDING_MODE, &mut *cache)
+            .format(Radix::Dec, ROUNDING_MODE, &mut cache)
             .unwrap();
 
         let string = string.split('e').collect::<Vec<&str>>();
-        let (Some(mantissa), Some(exponent)) = (string.get(0), string.get(1)) else {
+        let (Some(mantissa), Some(exponent)) = (string.first(), string.get(1)) else {
             write!(f, "{}", string[0])?;
             return Ok(());
         };
@@ -310,15 +310,11 @@ impl Display for Float {
             mantissa.push('0');
         }
 
-        if exponent <= MAX_LEN_BEFORE_SCIENTIFIC_NOTATION
-            && exponent >= -MAX_LEN_BEFORE_SCIENTIFIC_NOTATION
+        if (-MAX_LEN_BEFORE_SCIENTIFIC_NOTATION..=MAX_LEN_BEFORE_SCIENTIFIC_NOTATION).contains(&exponent)
         {
             mantissa.insert_str(0, &"0".repeat(MAX_LEN_BEFORE_SCIENTIFIC_NOTATION as usize));
 
-            mantissa.insert_str(
-                (MAX_LEN_BEFORE_SCIENTIFIC_NOTATION + 1 + exponent) as usize,
-                ".",
-            );
+            mantissa.insert((MAX_LEN_BEFORE_SCIENTIFIC_NOTATION + 1 + exponent) as usize, '.');
 
             while mantissa.ends_with('0') {
                 mantissa.pop();

@@ -186,14 +186,13 @@ fn is_spelled_out(name: &str) -> bool {
 pub fn parse_si_prefixed<T: SiPrefixable>(s: &str) -> Option<(Prefix, T)> {
     for prefix in Prefix::ALL {
         for symbol in prefix.symbols() {
-            if let Some(rest) = s.strip_prefix(symbol) {
-                if let Some(unit) = T::PREFIXABLE
+            if let Some(rest) = s.strip_prefix(symbol)
+                && let Some(unit) = T::PREFIXABLE
                     .iter()
                     .find(|unit| unit.symbol_forms().contains(&rest))
                 {
                     return Some((*prefix, *unit));
                 }
-            }
         }
         for name in prefix.names() {
             if let Some(rest) = s.strip_prefix(name) {

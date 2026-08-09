@@ -23,7 +23,7 @@ impl Display for Compound {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut formula = String::new();
         for (element, count) in &self.0 {
-            formula.push_str(&element.symbol());
+            formula.push_str(element.symbol());
             if *count > 1 {
                 formula.push_str(&count.to_string());
             }
