@@ -253,7 +253,8 @@ fn clock_times_are_points_on_the_wall_clock() {
 #[test]
 fn subtracting_clocks_measures_the_stretch_between_them() {
     assert_eq!(one("9:00 to 17:00"), "8 h");
-    assert_eq!(one("17:00 - 9:15"), "7.75 h");
+    // A part-hour stretch reads off the clock face it came from.
+    assert_eq!(one("17:00 - 9:15"), "7 h 45 min");
     assert_eq!(one("5:00p to 9:00p"), "4 h");
     // Clocks in different zones are the same kind of point, so this is the
     // stretch between two readings taken in two places.
@@ -336,7 +337,7 @@ fn timezone_names_do_not_shadow_unit_names() {
 fn a_range_endpoint_can_be_any_temporal_expression() {
     assert_eq!(
         run("launch = 9:00\nlaunch to 17:30"),
-        vec!["9:00 AM".to_string(), "8.5 h".to_string()]
+        vec!["9:00 AM".to_string(), "8 h 30 min".to_string()]
     );
     assert_eq!(
         run("start = 2024-02-10\nend = 2024-03-10\nstart to end"),

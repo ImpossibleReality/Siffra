@@ -178,6 +178,8 @@ fn collect_expression_currencies(expression: &ParsedExpr, currencies: &mut BTree
             }
         }
         ParsedExpr::Instant { .. } | ParsedExpr::ClockTime { .. } => {}
+        // TODO: Dollars + cents?
+        ParsedExpr::Mixed { .. } => {}
         ParsedExpr::Variable { .. } => {}
         ParsedExpr::FunctionCall { args, base, .. } => {
             if let Some(base) = base {
@@ -206,10 +208,9 @@ fn collect_expression_currencies(expression: &ParsedExpr, currencies: &mut BTree
 fn expression_reads_the_clock(expression: &ParsedExpr) -> bool {
     match expression {
         ParsedExpr::Instant { instant, .. } => instant.keyword.is_some(),
-        // A wall clock is anchored to today's date, which is what decides the
-        // offset another zone reads it through.
+        // A wall clock is anchored to today's date
         ParsedExpr::ClockTime { .. } => true,
-        ParsedExpr::Number { .. } | ParsedExpr::Variable { .. } => false,
+        ParsedExpr::Number { .. } | ParsedExpr::Mixed { .. } | ParsedExpr::Variable { .. } => false,
         ParsedExpr::FunctionCall { args, base, .. } => {
             base.as_deref().is_some_and(expression_reads_the_clock)
                 || args.iter().any(expression_reads_the_clock)
@@ -391,6 +392,20 @@ mod tests {
             outputs[2],
             Some(LineOutput::Value { numeric: true, .. })
         ));
+    }
+
+    #[test]
+    fn a_ladder_is_rendered_whole_rather_than_rounded_as_a_decimal() {
+        let mut calculation = Calculation::default();
+        let outputs = calculation.evaluate("5 ft 2 in\n1.87 m to ft,in");
+
+        assert_eq!(value_of(&outputs[0]), Some("5 ft 2 in"));
+        assert_eq!(value_of(&outputs[1]), Some("6 ft 1.622 in"));
+        assert!(
+            outputs
+                .iter()
+                .all(|output| matches!(output, Some(LineOutput::Value { numeric: false, .. })))
+        );
     }
 
     #[test]

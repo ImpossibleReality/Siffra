@@ -1,6 +1,7 @@
 use crate::error::SiffraExecutionError;
 use crate::parser::Span;
 use crate::representations::Compound;
+use crate::representations::ladder;
 use crate::representations::{
     ClockLiteral, Expression, Float, InstantKeyword, InstantLiteral, PercentageOperator, TimeZone,
     Value,
@@ -67,6 +68,12 @@ pub enum ParsedExpr {
         instant: ParsedInstant,
         span: Span,
     },
+    /// A mixed-unit literal: `5 ft 2 in`, `2 h 5 min 2 s`, `5'2"`. One value
+    /// written across several units, largest first.
+    Mixed {
+        rungs: Vec<(String, ParsedUnit)>,
+        span: Span,
+    },
     /// A wall-clock reading, with the zone it is read in when one is named.
     ClockTime {
         time: ParsedTime,
@@ -112,6 +119,9 @@ pub enum OpPost {
     Factorial,
     Percent,
     Convert(ParsedDimension),
+    /// A mixed-unit conversion target: `to ft,in`, `-> [h, min, s]`. Each entry
+    /// names one rung.
+    Ladder(Vec<ParsedDimension>),
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -218,6 +228,56 @@ impl TryFrom<ParsedDimension> for Dimension {
     }
 }
 
+/// One rung of a conversion ladder. Rungs are plain units, so a compound or a
+/// power in that position is a different request than the ladder syntax makes.
+fn ladder_rung(dimension: ParsedDimension) -> Result<Unit, SiffraExecutionError> {
+    let span = dimension.span;
+    match Dimension::try_from(dimension)?.0.as_slice() {
+        [(unit, power)] if *power == Float::from(1) => Ok(unit.clone()),
+        _ => Err(siffra_error!(
+            "Unit Error",
+            "Each rung of a mixed-unit target is a single unit",
+            Some(span)
+        )),
+    }
+}
+
+/// The value a mixed literal names: the rungs summed, read in the smallest of
+/// them, remembering how it was written so it reads back the same way.
+fn mixed_literal(
+    rungs: Vec<(String, ParsedUnit)>,
+    span: Span,
+) -> Result<Value, SiffraExecutionError> {
+    let mut units = Vec::with_capacity(rungs.len());
+    let mut total = Float::from(0);
+
+    for (amount, unit) in rungs {
+        let parsed = siffra_try!(
+            Unit::from_str(unit.name.as_str()),
+            "Unit Error",
+            format!("Unit '{}' not defined", unit.name),
+            Some(unit.span)
+        );
+        let factor = siffra_try!(
+            parsed.factor().ok_or(()),
+            "Unit Error",
+            format!("Unit '{}' has no known size", unit.name),
+            Some(unit.span)
+        );
+        let amount = siffra_try!(Float::parse(&amount), "Error parsing number", Some(span));
+        total = &total + &(&amount * &factor);
+        units.push(parsed);
+    }
+
+    if let Err(error) = ladder::validate(&units) {
+        return Err(siffra_error!("Unit Error", error.message(), Some(span)));
+    }
+
+    let smallest = units.last().expect("a mixed literal has rungs").clone();
+    let factor = smallest.factor().expect("a checked rung has a size");
+    Ok(Value::new(&total / &factor, Some(ladder::rung_dimension(&smallest))).with_ladder(units))
+}
+
 fn parse_zone(zone: Option<(String, Span)>) -> Result<Option<TimeZone>, SiffraExecutionError> {
     match zone {
         Some((name, span)) => Ok(Some(siffra_try!(
@@ -274,6 +334,9 @@ impl TryFrom<ParsedExpr> for Expression {
                 })
                 .with_span(span))
             }
+            ParsedExpr::Mixed { rungs, span } => {
+                Ok(Expression::constant(mixed_literal(rungs, span)?).with_span(span))
+            }
             ParsedExpr::ClockTime { time, zone, span } => Ok(Expression::clock(ClockLiteral {
                 time: checked_time(time, span)?,
                 has_seconds: time.second.is_some(),
@@ -322,6 +385,13 @@ impl TryFrom<ParsedExpr> for Expression {
                     OpPost::Convert(dimension) => {
                         Ok(Expression::convert(*lhs, Dimension::try_from(dimension)?)
                             .with_span(span))
+                    }
+                    OpPost::Ladder(rungs) => {
+                        let units = rungs
+                            .into_iter()
+                            .map(ladder_rung)
+                            .collect::<Result<Vec<_>, _>>()?;
+                        Ok(Expression::convert_ladder(*lhs, units).with_span(span))
                     }
                 }
             }

@@ -170,6 +170,25 @@ impl Value {
         self
     }
 
+    pub fn with_ladder(mut self, units: Vec<Unit>) -> Self {
+        self.display.ladder = Some(units);
+        self
+    }
+
+    /// Drops a ladder if it is incompatible with current units
+    fn checked_ladder(mut self) -> Self {
+        let fits = match &self.display.ladder {
+            Some(units) => units
+                .first()
+                .is_some_and(|unit| unit.dimensionality() == self.dimension.dimensionality()),
+            None => return self,
+        };
+        if !fits {
+            self.display.ladder = None;
+        }
+        self
+    }
+
     pub fn is_repeating_candidate(&self) -> bool {
         self.display.repeating_candidate
     }
@@ -182,6 +201,16 @@ impl Value {
 
     pub fn simplify(&mut self) {
         self.dimension = self.dimension.simplify();
+    }
+
+    /// The hints a conversion keeps. A conversion names the units it wants, so
+    /// it always replaces a ladder rather than inheriting one.
+    fn converted_display(&self) -> DisplayHints {
+        DisplayHints {
+            span_readings: false,
+            ladder: None,
+            ..self.display.clone()
+        }
     }
 
     pub fn convert(&self, new_dimension: &Dimension) -> Option<Self> {
@@ -237,10 +266,7 @@ impl Value {
                     dimension: new_dimension.clone(),
                     value,
                     basis: Some(basis.clone()),
-                    display: DisplayHints {
-                        span_readings: false,
-                        ..self.display.clone()
-                    },
+                    display: self.converted_display(),
                 });
             }
         }
@@ -254,10 +280,7 @@ impl Value {
                 .is_duration()
                 .then(|| self.basis.clone())
                 .flatten(),
-            display: DisplayHints {
-                span_readings: false,
-                ..self.display.clone()
-            },
+            display: self.converted_display(),
         })
     }
 
@@ -286,12 +309,15 @@ impl Value {
             } else {
                 self.value.clone().add(&adjustment)
             };
-            return Some(Self {
-                dimension: self.dimension.clone(),
-                value,
-                basis: None,
-                display: self.display.merged(&other.display),
-            });
+            return Some(
+                Self {
+                    dimension: self.dimension.clone(),
+                    value,
+                    basis: None,
+                    display: self.display.merged(&other.display),
+                }
+                .checked_ladder(),
+            );
         }
         if self.dimension.is_percent() && !other.dimension.is_percent() {
             return None;
@@ -306,15 +332,18 @@ impl Value {
         };
         let basis = combined_basis(self, other, subtract);
 
-        Some(Self {
-            dimension: self.dimension.clone(),
-            value,
-            display: DisplayHints {
-                span_readings: basis.is_some(),
-                ..self.display.merged(&other.display)
-            },
-            basis,
-        })
+        Some(
+            Self {
+                dimension: self.dimension.clone(),
+                value,
+                display: DisplayHints {
+                    span_readings: basis.is_some(),
+                    ..self.display.merged(&other.display)
+                },
+                basis,
+            }
+            .checked_ladder(),
+        )
     }
 
     /// Temporal addition: point − point, point ± interval
@@ -330,11 +359,35 @@ impl Value {
                 // Two clock readings measure a stretch of the same day, which
                 // no calendar axis disagrees about; hours are what people mean.
                 if left.is_clock() {
+                    let hours = self.value.clone().sub(&other.value).div(&Float::from(3600));
+                    // A clock answers at the granularity it was read at: one
+                    // written with seconds gets a seconds rung, where a
+                    // fractional minute would be the same number less plainly.
+                    let seconds = [&self.display, &other.display]
+                        .iter()
+                        .any(|display| display.granularity == Some(Granularity::Second));
+                    // Otherwise a part-hour stretch is written the way a clock
+                    // face is, and a whole number of hours already says
+                    // everything a minutes rung could.
+                    let display = if seconds {
+                        DisplayHints::ladder(vec![
+                            Unit::Base(Quantity::Time(Time::Hour)),
+                            Unit::Base(Quantity::Time(Time::Minute)),
+                            Unit::Base(Quantity::Time(Time::Second)),
+                        ])
+                    } else if hours.is_integer() {
+                        DisplayHints::default()
+                    } else {
+                        DisplayHints::ladder(vec![
+                            Unit::Base(Quantity::Time(Time::Hour)),
+                            Unit::Base(Quantity::Time(Time::Minute)),
+                        ])
+                    };
                     return Some(Self {
                         dimension: hours_dimension(),
-                        value: self.value.clone().sub(&other.value).div(&Float::from(3600)),
+                        value: hours,
                         basis: None,
-                        display: DisplayHints::default(),
+                        display,
                     });
                 }
                 let start = other.as_zoned()?;
@@ -417,23 +470,27 @@ impl Value {
         terms.extend(other.dimension.0.iter().cloned());
 
         let basis = scaled_basis(self, other);
+        let display = DisplayHints {
+            span_readings: basis.is_some(),
+            ..self.display.merged(&other.display)
+        };
+        let ladder = display.ladder.clone();
         let mut result = Self {
             dimension: Dimension(terms).simplify().decay_affine(),
             value: self.value.clone().mul(&other.value),
-            display: DisplayHints {
-                span_readings: basis.is_some(),
-                ..self.display.merged(&other.display)
-            },
+            display,
             basis,
         };
 
         if let Some(target) = self.dimension.collapse_target(&other.dimension)
             && let Some(collapsed) = result.convert(&target)
         {
+            // Collapsing is our choice of units, but displayed ladder still persists b/c it is at user request
             result = collapsed;
+            result.display.ladder = ladder;
         }
 
-        Some(result)
+        Some(result.checked_ladder())
     }
 
     pub fn reciprocal(&self) -> Self {
@@ -447,7 +504,11 @@ impl Value {
             ),
             value: self.value.clone().recip(),
             basis: None,
-            display: self.display.clone(),
+            display: DisplayHints {
+                // Recip changes units, therefore ladder should be invalidated
+                ladder: None,
+                ..self.display.clone()
+            },
         }
     }
 

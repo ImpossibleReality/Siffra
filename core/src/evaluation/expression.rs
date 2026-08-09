@@ -5,7 +5,7 @@ use super::percentage::evaluate_percentage;
 use super::temporal::{resolve_clock, resolve_instant};
 use super::variables::resolve_variable;
 use crate::error::SiffraExecutionError;
-use crate::representations::{Dimension, Expression, Float, InnerExpression, Value};
+use crate::representations::{Dimension, Expression, Float, InnerExpression, Unit, Value, ladder};
 use crate::{siffra_error, siffra_try};
 
 /// Failiure to resolve variable after `to` should reference both units + variables
@@ -23,12 +23,67 @@ fn evaluate_endpoint(
     })
 }
 
+/// Converts into a mixed-unit target: the value dimension becomes the smallest rung,
+/// which is the one the scalar is then read in, and the rungs become a display hint.
+fn evaluate_ladder(
+    value: Value,
+    units: &[Unit],
+    span: Option<crate::parser::Span>,
+) -> Result<Value, SiffraExecutionError> {
+    if let Err(error) = ladder::validate(units) {
+        return Err(siffra_error!("Unit Error", error.message(), span));
+    }
+    let label = || {
+        units
+            .iter()
+            .map(Unit::shorthand)
+            .collect::<Vec<_>>()
+            .join(",")
+    };
+
+    let smallest = ladder::rung_dimension(units.last().expect("a validated ladder has rungs"));
+    let converted = siffra_try!(
+        value.convert(&smallest).ok_or(()),
+        "Unit Error",
+        format!("Cannot convert {} to {}", value_unit(&value), label()),
+        span
+    );
+
+    // Combined ranges are independent totals — 59 days and 1,416 hours can each
+    // be right while the ladder output is ambiguous. Anchored ranges are fine, since
+    // they have a single total.
+    //
+    // E.X. `1/1/2026 to 1/31/2026` is a single range, but
+    // `1/1/2026 to 1/31/2026 + 1/1/2026 to 2/28/2026` is two ranges that would not
+    // make sense to split into a ladder.
+    if ladder::has_calendar_rung(units)
+        && converted
+            .basis()
+            .is_some_and(|basis| basis.anchors().is_none())
+    {
+        return Err(siffra_error!(
+            "Range Error",
+            format!(
+                "Cannot split a combined range into {}; convert to a single unit instead",
+                units
+                    .iter()
+                    .map(Unit::shorthand)
+                    .collect::<Vec<_>>()
+                    .join(" + ")
+            ),
+            span
+        ));
+    }
+
+    Ok(converted.with_ladder(units.to_vec()))
+}
+
 pub fn evaluate_expr(
     expr: &Expression,
     state: &SiffraState,
 ) -> Result<Value, SiffraExecutionError> {
     match expr.inner() {
-        InnerExpression::Constant(name) => Ok(name.clone()),
+        InnerExpression::Constant(value) => Ok((**value).clone()),
         InnerExpression::Instant(literal) => resolve_instant(literal, state, expr.span()),
         InnerExpression::Clock(literal) => resolve_clock(literal, state, expr.span()),
         InnerExpression::Interval { start, end } => {
@@ -91,6 +146,10 @@ pub fn evaluate_expr(
                     expr.span()
                 ))
             }
+        }
+        InnerExpression::ConvertLadder(value, units) => {
+            let value = evaluate_expr(value, state)?;
+            evaluate_ladder(value, units, expr.span())
         }
         InnerExpression::Variable(name) => resolve_variable(name, state, expr.span()),
         InnerExpression::FunctionCall { name, args } => {

@@ -91,6 +91,23 @@ fn is_known_unit(name: &str) -> bool {
     SCALAR_UNIT_ALIASES.contains(&name) || crate::representations::Unit::from_str(name).is_ok()
 }
 
+/// Whether `number unit number unit …` is one mixed-unit literal or an implicit product. It is
+/// only parsed as mixed units when each unit measures the same thing and they get strictly smaller,
+/// which is what makes `2 h 5 min` a duration while `2 m 5 kg` stays a product.
+fn is_mixed_literal(rungs: &[(String, ParsedUnit)]) -> bool {
+    let units = rungs
+        .iter()
+        .map(|(_, unit)| crate::representations::Unit::from_str(&unit.name).ok())
+        .collect::<Option<Vec<_>>>();
+    units.is_some_and(|units| crate::representations::ladder::validate(&units).is_ok())
+}
+
+/// What a `->` step asks for: one unit, or a ladder of them.
+enum ArrowTarget {
+    Single(ParsedDimension),
+    Ladder(Vec<ParsedDimension>),
+}
+
 /// Converts a chumsky span into a siffra [`Span`].
 fn to_span(span: SimpleSpan<usize>) -> Span {
     Span::new(span.start, span.end)
@@ -231,6 +248,69 @@ fn line_parser<'a>() -> impl Parser<'a, &'a str, ParsedLine, Extra<'a>> {
             name,
             chemical,
             span: to_span(e.span()),
+        })
+        .boxed();
+
+    // A rung is a bare unit name: no chemical qualifier, no power, no product.
+    let plain_unit: Boxed<'a, ParsedUnit> = unit_name
+        .clone()
+        .map_with(|name, e| ParsedUnit {
+            name,
+            chemical: None,
+            span: to_span(e.span()),
+        })
+        .boxed();
+
+    let mixed_rung: Boxed<'a, (String, ParsedUnit)> = number_str
+        .clone()
+        .then_ignore(sp1.clone())
+        .then(plain_unit.clone())
+        .boxed();
+
+    // `5 ft 2 in` is one length. The rungs have to agree on what they measure
+    // and shrink left to right, or the line keeps today's reading.
+    let mixed_literal: Boxed<'a, ParsedExpr> = mixed_rung
+        .clone()
+        .then(
+            sp1.clone()
+                .ignore_then(mixed_rung)
+                .repeated()
+                .at_least(1)
+                .collect::<Vec<_>>(),
+        )
+        .try_map(
+            |(first, rest): ((String, ParsedUnit), Vec<(String, ParsedUnit)>), span: SimpleSpan| {
+                let mut rungs = vec![first];
+                rungs.extend(rest);
+                if is_mixed_literal(&rungs) {
+                    Ok(ParsedExpr::Mixed {
+                        rungs,
+                        span: to_span(span),
+                    })
+                } else {
+                    Err(Rich::custom(span, "not a mixed-unit literal"))
+                }
+            },
+        )
+        .boxed();
+
+    // Feet and inches shorthand (e.x. 5'2")
+    let quoted_length: Boxed<'a, ParsedExpr> = number_str
+        .clone()
+        .then_ignore(just('\''))
+        .then(number_str.clone())
+        .then_ignore(just('"'))
+        .map_with(|(feet, inches): (String, String), e| {
+            let span = to_span(e.span());
+            let unit = |name: &str| ParsedUnit {
+                name: name.to_string(),
+                chemical: None,
+                span,
+            };
+            ParsedExpr::Mixed {
+                rungs: vec![(feet, unit("ft")), (inches, unit("in"))],
+                span,
+            }
         })
         .boxed();
 
@@ -434,6 +514,54 @@ fn line_parser<'a>() -> impl Parser<'a, &'a str, ParsedLine, Extra<'a>> {
     let convert: Boxed<'a, ParsedDimension> =
         conversion_keyword.clone().ignore_then(known_units).boxed();
 
+    let rung: Boxed<'a, ParsedDimension> = plain_unit
+        .clone()
+        .try_map(|unit: ParsedUnit, span: SimpleSpan| {
+            if is_known_unit(&unit.name) {
+                Ok(ParsedDimension {
+                    span: unit.span,
+                    numerator: vec![(unit, "1".to_string())],
+                    denominator: Vec::new(),
+                })
+            } else {
+                Err(Rich::custom(span, "not a unit"))
+            }
+        })
+        .boxed();
+
+    let bare_ladder: Boxed<'a, Vec<ParsedDimension>> = rung
+        .clone()
+        .then(
+            just(',')
+                .ignore_then(rung.clone())
+                .repeated()
+                .at_least(1)
+                .collect::<Vec<_>>(),
+        )
+        .map(|(first, rest): (ParsedDimension, Vec<ParsedDimension>)| {
+            let mut rungs = vec![first];
+            rungs.extend(rest);
+            rungs
+        })
+        .boxed();
+
+    let bracketed_ladder: Boxed<'a, Vec<ParsedDimension>> = rung
+        .clone()
+        .separated_by(just(',').padded_by(sp.clone()))
+        .at_least(2)
+        .collect::<Vec<_>>()
+        .padded_by(sp.clone())
+        .delimited_by(just('['), just(']'))
+        .boxed();
+
+    let ladder_target: Boxed<'a, Vec<ParsedDimension>> =
+        choice((bracketed_ladder, bare_ladder)).boxed();
+
+    let convert_ladder: Boxed<'a, Vec<ParsedDimension>> = conversion_keyword
+        .clone()
+        .ignore_then(ladder_target.clone())
+        .boxed();
+
     let variable: Boxed<'a, ParsedExpr> = text::ascii::ident()
         .try_map(|name: &str, span: SimpleSpan| {
             if RESERVED_VARS.contains(&name) {
@@ -599,6 +727,11 @@ fn line_parser<'a>() -> impl Parser<'a, &'a str, ParsedLine, Extra<'a>> {
                 // reading of the same characters.
                 instant_literal.clone(),
                 clock_literal.clone(),
+                quoted_length.clone(),
+                // A mixed literal has to be tried before the single-unit
+                // number it starts with, which would otherwise take the first
+                // rung and leave the rest to implicit multiplication.
+                mixed_literal.clone(),
                 dollar_number.clone(),
                 dimensional_number.clone(),
                 ungrouped_function,
@@ -715,6 +848,7 @@ fn line_parser<'a>() -> impl Parser<'a, &'a str, ParsedLine, Extra<'a>> {
         enum MulTail {
             Arithmetic(Op, Span, ParsedExpr),
             Convert(ParsedDimension, Span),
+            Ladder(Vec<ParsedDimension>, Span),
             Interval(ParsedExpr, Span),
         }
 
@@ -738,6 +872,11 @@ fn line_parser<'a>() -> impl Parser<'a, &'a str, ParsedLine, Extra<'a>> {
                 .then(product.clone())
                 .map(|((op, span), rhs)| MulTail::Arithmetic(op, span, rhs)),
             interval_endpoint.map_with(|rhs, e| MulTail::Interval(rhs, to_span(e.span()))),
+            // A ladder target has to be tried first: a single-unit target would
+            // claim `ft` and leave `,in` behind.
+            convert_ladder
+                .clone()
+                .map_with(|rungs, e| MulTail::Ladder(rungs, to_span(e.span()))),
             convert
                 .clone()
                 .map_with(|dim, e| MulTail::Convert(dim, to_span(e.span()))),
@@ -820,6 +959,11 @@ fn line_parser<'a>() -> impl Parser<'a, &'a str, ParsedLine, Extra<'a>> {
                             op: OpPost::Convert(dim),
                             span,
                         },
+                        MulTail::Ladder(rungs, span) => ParsedExpr::UnOpPost {
+                            lhs: Box::new(lhs),
+                            op: OpPost::Ladder(rungs),
+                            span,
+                        },
                         MulTail::Interval(rhs, span) => ParsedExpr::BinOp {
                             lhs: Box::new(lhs),
                             op: Op::Interval,
@@ -860,7 +1004,10 @@ fn line_parser<'a>() -> impl Parser<'a, &'a str, ParsedLine, Extra<'a>> {
         .clone()
         .ignore_then(just("->").map_with(|_, e| to_span(e.span())))
         .then_ignore(sp.clone())
-        .then(units.clone())
+        .then(choice((
+            ladder_target.map(ArrowTarget::Ladder),
+            units.clone().map(ArrowTarget::Single),
+        )))
         .boxed();
 
     let arrow_conversion = arrow_step
@@ -870,7 +1017,7 @@ fn line_parser<'a>() -> impl Parser<'a, &'a str, ParsedLine, Extra<'a>> {
         .then_ignore(sp.clone())
         .then(rest_of_line)
         .validate(
-            |(steps, rest): (Vec<(Span, ParsedDimension)>, String), _, emitter| {
+            |(steps, rest): (Vec<(Span, ArrowTarget)>, String), _, emitter| {
                 if !rest.is_empty() {
                     let arrow_span = steps.last().expect("at least one arrow").0;
                     emitter.emit(Rich::custom(
@@ -889,12 +1036,22 @@ fn line_parser<'a>() -> impl Parser<'a, &'a str, ParsedLine, Extra<'a>> {
         .then(arrow_conversion)
         .map(|(e, conversions)| {
             let mut lhs = e;
-            for (arrow_span, dim) in conversions.into_iter().flatten() {
-                let span = arrow_span.merge(dim.span);
+            for (arrow_span, target) in conversions.into_iter().flatten() {
+                let (target_span, op) = match target {
+                    ArrowTarget::Single(dim) => (dim.span, OpPost::Convert(dim)),
+                    ArrowTarget::Ladder(rungs) => {
+                        let span = rungs
+                            .iter()
+                            .map(|rung| rung.span)
+                            .reduce(|left, right| left.merge(right))
+                            .expect("a ladder has rungs");
+                        (span, OpPost::Ladder(rungs))
+                    }
+                };
                 lhs = ParsedExpr::UnOpPost {
                     lhs: Box::new(lhs),
-                    op: OpPost::Convert(dim),
-                    span,
+                    op,
+                    span: arrow_span.merge(target_span),
                 };
             }
             lhs
@@ -1346,6 +1503,64 @@ mod tests {
         ));
 
         assert!(parse_line("5 m -> cm -> mm + 2").is_err());
+    }
+
+    #[test]
+    fn a_shrinking_run_of_one_dimension_is_one_mixed_literal() {
+        for (input, rungs) in [
+            ("5 ft 2 in", 2),
+            ("2 h 5 min 2 s", 3),
+            ("6 lb 3 oz", 2),
+            ("5'2\"", 2),
+        ] {
+            let ParsedLine::Expression(ParsedExpr::Mixed { rungs: parsed, .. }) = parse(input)
+            else {
+                panic!("{input:?} should be one mixed literal");
+            };
+            assert_eq!(parsed.len(), rungs, "input was {input:?}");
+        }
+
+        for input in ["2 m 5 kg", "5 m 2 m", "2 in 5 ft", "5 ft 2"] {
+            assert!(
+                !matches!(
+                    parse_line(input),
+                    Ok(ParsedLine::Expression(ParsedExpr::Mixed { .. }))
+                ),
+                "{input:?} should not merge"
+            );
+        }
+    }
+
+    #[test]
+    fn commas_and_brackets_mark_a_ladder_target_and_nothing_else_does() {
+        for input in [
+            "1.87 m to ft,in",
+            "1.87 m to [ft, in]",
+            "5.25 ft in ft,in",
+            "5 ft 2 in in mi,ft",
+            "1,000 m to ft,in",
+            "7502 s -> [h, min, s]",
+            "7502 s -> h,min",
+        ] {
+            let ParsedLine::Expression(ParsedExpr::UnOpPost { op, .. }) = parse(input) else {
+                panic!("{input:?} should end in a conversion");
+            };
+            assert!(
+                matches!(op, OpPost::Ladder(_)),
+                "{input:?} should target a ladder"
+            );
+        }
+
+        // A single unit, bracketed or not, is an ordinary conversion.
+        for input in ["1 h to min", "5 m in [km]", "5 m + 3 in -> cm"] {
+            let ParsedLine::Expression(ParsedExpr::UnOpPost { op, .. }) = parse(input) else {
+                panic!("{input:?} should end in a conversion");
+            };
+            assert!(
+                matches!(op, OpPost::Convert(_)),
+                "{input:?} should target one dimension"
+            );
+        }
     }
 
     #[test]

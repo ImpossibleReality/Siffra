@@ -1,5 +1,5 @@
 use crate::representations::basis::zoned_from_epoch_seconds;
-use crate::representations::{Affine, Basis, Float, Granularity, TimeZone, Value};
+use crate::representations::{Affine, Basis, Float, Granularity, TimeZone, Value, ladder};
 
 /// A rendered value, still structured. The front end applies its own
 /// character-budget rules per arm instead of re-parsing a flat string, which
@@ -19,6 +19,16 @@ pub enum FormattedValue {
     SpanReadings {
         readings: Vec<(String, String)>,
     },
+    /// One entry per rung of a mixed-unit display, largest first. Unlike
+    /// `SpanReadings`, these sum to the value rather than restating it, and the
+    /// sign is written once in front rather than on every rung.
+    Ladder {
+        negative: bool,
+        /// The sign needs a bracket, because the rungs it applies to start
+        /// with a zero that would otherwise swallow it.
+        grouped: bool,
+        rungs: Vec<(String, String)>,
+    },
 }
 
 impl FormattedValue {
@@ -35,6 +45,22 @@ impl FormattedValue {
                 .map(|(amount, unit)| format!("{amount} {unit}"))
                 .collect::<Vec<_>>()
                 .join(" / "),
+            FormattedValue::Ladder {
+                negative,
+                grouped,
+                rungs,
+            } => {
+                let rungs = rungs
+                    .iter()
+                    .map(|(amount, unit)| format!("{amount} {unit}"))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                match (*negative, *grouped) {
+                    (true, true) => format!("-({rungs})"),
+                    (true, false) => format!("-{rungs}"),
+                    (false, _) => rungs,
+                }
+            }
         }
     }
 }
@@ -44,6 +70,18 @@ impl FormattedValue {
 pub fn format_value(value: &Value, default_zone: Option<&TimeZone>) -> FormattedValue {
     if let Some(point) = value.dimension.as_temporal_point() {
         return format_temporal(value, &point, default_zone);
+    }
+    // A ladder was asked for by name, so it answers before the default
+    // rendering of a duration does.
+    if let Some(units) = &value.display().ladder
+        && let Some(decomposition) =
+            ladder::decompose(&value.value, &value.dimension, value.basis(), units)
+    {
+        return FormattedValue::Ladder {
+            negative: decomposition.negative,
+            grouped: decomposition.grouped(),
+            rungs: decomposition.rendered(),
+        };
     }
     if let Some(basis) = value.basis()
         && value.display().span_readings

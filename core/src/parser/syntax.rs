@@ -226,6 +226,14 @@ fn add_expr(input: &str, expr: &ParsedExpr, out: &mut Vec<SyntaxSpan>) {
                 out.push(syntax(SyntaxKind::Unit, zone_span.start()..zone_span.end()));
             }
         }
+        // The amounts are already numbers to the lexer; only the rungs need
+        // marking. The punctuated form (`5'2"`) names units the source never
+        // spells out, and `add_unit` leaves those alone.
+        ParsedExpr::Mixed { rungs, .. } => {
+            for (_, unit) in rungs {
+                add_unit(input, unit, out);
+            }
+        }
         ParsedExpr::ClockTime { zone, span, .. } => {
             out.push(syntax(SyntaxKind::Number, span.start()..span.end()));
             if let Some((_, zone_span)) = zone {
@@ -255,8 +263,14 @@ fn add_expr(input: &str, expr: &ParsedExpr, out: &mut Vec<SyntaxSpan>) {
         ParsedExpr::UnOpPre { rhs, .. } => add_expr(input, rhs, out),
         ParsedExpr::UnOpPost { lhs, op, .. } => {
             add_expr(input, lhs, out);
-            if let super::OpPost::Convert(dimension) = op {
-                add_dimension(input, dimension, out);
+            match op {
+                super::OpPost::Convert(dimension) => add_dimension(input, dimension, out),
+                super::OpPost::Ladder(rungs) => {
+                    for rung in rungs {
+                        add_dimension(input, rung, out);
+                    }
+                }
+                super::OpPost::Factorial | super::OpPost::Percent => {}
             }
         }
         ParsedExpr::BinOp { lhs, rhs, .. } => {
@@ -532,6 +546,19 @@ mod tests {
         assert_eq!(
             render("3 in in cm"),
             "<Number>3</Number> <Unit>in</Unit> <Operation>in</Operation> <Unit>cm</Unit>"
+        );
+    }
+
+    #[test]
+    fn marks_every_rung_of_a_mixed_literal_and_of_a_ladder_target() {
+        assert_eq!(
+            render("5 ft 2 in"),
+            "<Number>5</Number> <Unit>ft</Unit> <Number>2</Number> <Unit>in</Unit>"
+        );
+        assert_eq!(
+            render("1.87 m to ft,in"),
+            "<Number>1.87</Number> <Unit>m</Unit> <Operation>to</Operation> \
+             <Unit>ft</Unit>,<Unit>in</Unit>"
         );
     }
 

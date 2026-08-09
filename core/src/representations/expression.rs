@@ -1,6 +1,7 @@
 use crate::parser::Span;
 use crate::representations::Dimension;
 use crate::representations::TimeZone;
+use crate::representations::Unit;
 use crate::representations::Value;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,7 +45,7 @@ pub struct Expression {
 
 #[derive(Debug, Clone)]
 pub enum InnerExpression {
-    Constant(Value),
+    Constant(Box<Value>),
     Instant(InstantLiteral),
     Clock(ClockLiteral),
     /// `a to b` over two temporal points
@@ -55,6 +56,9 @@ pub enum InnerExpression {
     Negate(Box<Expression>),
     Percent(Box<Expression>),
     Convert(Box<Expression>, Dimension),
+    /// A conversion that asks for one value written across several units,
+    /// largest first: `1.87 m to ft,in`.
+    ConvertLadder(Box<Expression>, Vec<Unit>),
     Variable(String),
     FunctionCall {
         name: String,
@@ -94,7 +98,7 @@ impl Expression {
     }
 
     pub fn constant(value: Value) -> Expression {
-        Expression::new(InnerExpression::Constant(value))
+        Expression::new(InnerExpression::Constant(Box::new(value)))
     }
 
     pub fn instant(literal: InstantLiteral) -> Expression {
@@ -122,6 +126,10 @@ impl Expression {
 
     pub fn convert(expression: Expression, dimension: Dimension) -> Expression {
         Expression::new(InnerExpression::Convert(Box::new(expression), dimension))
+    }
+
+    pub fn convert_ladder(expression: Expression, units: Vec<Unit>) -> Expression {
+        Expression::new(InnerExpression::ConvertLadder(Box::new(expression), units))
     }
 
     pub fn variable(name: String) -> Expression {
