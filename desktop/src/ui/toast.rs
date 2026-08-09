@@ -6,8 +6,8 @@
 //! second message arriving mid-flight simply moves the start and the pill
 //! carries on from wherever it had got to.
 
-use crate::theme;
 use crate::ui::easing::cubic_out;
+use crate::ui::theme;
 use gpui::{BoxShadow, Div, FontWeight, ParentElement, SharedString, Styled, div, point, px};
 use std::time::Instant;
 

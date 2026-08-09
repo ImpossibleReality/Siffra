@@ -8,7 +8,7 @@
 
 use super::Editor;
 use super::layout::{Layout, row_rects};
-use crate::theme;
+use crate::ui::theme;
 use gpui::{
     App, Bounds, Corners, Element, ElementId, ElementInputHandler, Entity, GlobalElementId,
     InspectorElementId, IntoElement, LayoutId, Pixels, Style, TextAlign, Window, point, px, quad,

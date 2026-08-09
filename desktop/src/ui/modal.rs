@@ -4,8 +4,8 @@
 //! Keeping those decisions outside the frame lets help, file search, and save
 //! palettes use the same shape without coupling their state machines.
 
-use crate::theme;
 use crate::ui::UI_FONT;
+use crate::ui::theme;
 use gpui::{
     BoxShadow, CursorStyle, Div, ElementId, FontWeight, InteractiveElement, ParentElement, Pixels,
     Stateful, Styled, div, point, px, rgb, rgba,

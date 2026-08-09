@@ -7,7 +7,7 @@
 //! Placing one is the caller's too, because the thing it hangs off is generally
 //! drawn somewhere this element cannot see.
 
-use crate::theme;
+use crate::ui::theme;
 use gpui::{
     BoxShadow, CursorStyle, Div, ElementId, FontWeight, InteractiveElement, ParentElement, Pixels,
     SharedString, Stateful, Styled, div, point, px,

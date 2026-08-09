@@ -1,4 +1,4 @@
-//! The bar across the top of the window: what the calculation is called, and
+//! The workspace toolbar: what the calculation is called, and
 //! the buttons beside it.
 //!
 //! The window's own title bar is drawn transparent, so this stands in for it.
@@ -10,11 +10,11 @@
 //! level. What the other buttons open belongs to the workspace, so they are
 //! reported as events.
 
-use crate::assets::icon;
 use crate::platform;
-use crate::theme;
 use crate::ui::UI_FONT;
+use crate::ui::assets::icon;
 use crate::ui::single_line_input::{FieldMetrics, FieldState, SingleLineInput, ValueChanged};
+use crate::ui::theme;
 use crate::ui::tooltip::TextTooltip;
 use gpui::{
     AnyView, App, AppContext, ClickEvent, Context, CursorStyle, Div, Entity, EventEmitter,

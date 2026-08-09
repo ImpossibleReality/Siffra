@@ -1,15 +1,15 @@
-//! The searchable help dialog.
+//! The searchable help dialog view.
 //!
 //! Catalog entries come from `siffra::catalog`; the introductory overview is
 //! authored in this module.
 
-use crate::assets::icon;
 use crate::fuzzy;
-use crate::text_input::{Left, Right};
-use crate::theme;
+use crate::text::{Left, Right};
+use crate::ui::assets::icon;
 use crate::ui::code_block::{CodeBlockLine, CodeLineActivated, SelectableCodeLine, code_block};
 use crate::ui::modal::{ModalSize, body as modal_body, close_button, header, overlay, panel};
 use crate::ui::single_line_input::{FieldMetrics, FieldState, SingleLineInput, ValueChanged};
+use crate::ui::theme;
 use crate::ui::tooltip::TextTooltip;
 use gpui::{
     Animation, AnimationExt, AnyElement, App, AppContext, Context, CursorStyle, Div, Entity,

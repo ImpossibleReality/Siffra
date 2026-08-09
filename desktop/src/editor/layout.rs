@@ -4,8 +4,8 @@
 //! Column widths follow from the window and the separator position, so the text
 //! can be shaped up front and the results and rulers use the same measurements.
 
-use crate::highlight::{Span, Token, highlight_line, is_header_line};
-use crate::theme;
+use crate::syntax::{Span, Token, highlight_line, is_header_line};
+use crate::ui::theme;
 use gpui::{
     Font, FontWeight, Hsla, Pixels, Point, SharedString, TextRun, Window, WrappedLine, point, px,
 };

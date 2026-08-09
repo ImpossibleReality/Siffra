@@ -1,4 +1,4 @@
-//! Persistence for saved calculations.
+//! Persistence store for saved calculations.
 //!
 //! Every document is a whole editor buffer. The workspace writes shortly after
 //! typing settles, so writes have to be cheap and durable — hence redb, an

@@ -12,12 +12,12 @@
 //! colour from the same place the glyphs do, so it follows the text through a
 //! hover.
 
+use self::format::{NumberDisplay, format_number_for_characters, format_repeating_decimal};
 use super::layout::{Fonts, Metrics, row_rects};
-use crate::engine::LineOutput;
-use crate::number_display::{
-    NumberDisplay, format_number_for_characters, format_repeating_decimal,
-};
-use crate::theme;
+use crate::calculation::LineOutput;
+
+pub mod format;
+use crate::ui::theme;
 use gpui::{
     App, Bounds, Element, ElementId, Font, GlobalElementId, Hsla, InspectorElementId, IntoElement,
     LayoutId, Pixels, Rgba, ShapedLine, SharedString, Style, TextRun, Window, WrappedLine, fill,

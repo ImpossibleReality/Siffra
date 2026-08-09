@@ -1,7 +1,7 @@
 //! The small text tooltip shared by compact controls.
 
-use crate::theme;
 use crate::ui::UI_FONT;
+use crate::ui::theme;
 use gpui::{
     Context, FontWeight, IntoElement, ParentElement, Render, SharedString, Styled, Window, div, px,
     rgb,

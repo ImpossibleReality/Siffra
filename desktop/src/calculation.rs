@@ -1,4 +1,4 @@
-//! Turning the editor's text into one result per line.
+//! Turning a calculation's text into one result per line.
 //!
 //! Each line is cached against itself and every line above it, because a line's
 //! value depends on the state those lines left behind.

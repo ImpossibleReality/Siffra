@@ -10,12 +10,12 @@
 //! know to place a caret — its padding, how tall the caret stands, whether the
 //! text is centred — is data it is built with.
 
-use crate::text_input::{
+use crate::text::{
     Backspace, Copy, Cut, Delete, DeleteToLineStart, DeleteWordLeft, DeleteWordRight, EditKind,
     End, Home, Left, Paste, Redo, Right, SelectAll, SelectEnd, SelectHome, SelectLeft, SelectRight,
     SelectWordLeft, SelectWordRight, TextBuffer, Undo, WordLeft, WordRight,
 };
-use crate::theme;
+use crate::ui::theme;
 use gpui::{
     App, Bounds, ClipboardItem, Context, Corners, Div, ElementInputHandler, EntityInputHandler,
     EventEmitter, FocusHandle, Focusable, HighlightStyle, InteractiveElement, IntoElement,

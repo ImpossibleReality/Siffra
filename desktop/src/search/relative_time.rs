@@ -1,4 +1,4 @@
-//! Compact "when was this last edited" labels for the search list. Recent edits
+//! Compact "when was this last edited" labels for a search list. Recent edits
 //! read as elapsed time, older ones fall back to a date, so the column stays
 //! short enough to sit beside a title.
 

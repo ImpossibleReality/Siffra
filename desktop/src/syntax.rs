@@ -1,4 +1,4 @@
-//! Desktop adapter for the parser-owned semantic syntax analysis.
+//! Application adapter for the parser-owned semantic syntax analysis.
 
 use std::ops::Range;
 

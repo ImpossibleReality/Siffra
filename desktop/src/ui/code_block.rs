@@ -1,7 +1,7 @@
 //! Selectable, syntax-highlighted calculator examples.
 
-use crate::highlight::{Token, highlight_line};
-use crate::theme;
+use crate::syntax::{Token, highlight_line};
+use crate::ui::theme;
 use gpui::{
     App, Bounds, ClipboardItem, Context, CursorStyle, Element, ElementId, Entity, EventEmitter,
     FocusHandle, Focusable, FontWeight, GlobalElementId, HighlightStyle, InspectorElementId,

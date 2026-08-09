@@ -1,4 +1,4 @@
-//! The menu bar, and the handful of commands that exist only because a menu bar
+//! The application menu bar and the commands that exist only because a menu bar
 //! has to offer them.
 //!
 //! Nothing here does the work itself: every item dispatches an action that some
@@ -15,7 +15,7 @@
 use crate::editor::ShowCharacterPalette;
 #[cfg(target_os = "macos")]
 use crate::platform;
-use crate::text_input::{Copy, Cut, Paste, Redo, SelectAll, Undo};
+use crate::text::actions::{Copy, Cut, Paste, Redo, SelectAll, Undo};
 use crate::workspace::{
     CheckForUpdates, InstallUpdate, NameDocument, NewDocument, ToggleAlwaysOnTop, ToggleHelp,
     ToggleSearch, Workspace,

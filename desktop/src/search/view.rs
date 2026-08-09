@@ -1,4 +1,4 @@
-//! The palette that finds a saved calculation.
+//! The calculation-search palette view.
 //!
 //! It matches a query against every name and, failing that, against the lines of
 //! every calculation, so a file can be found by something it works out as well as
@@ -8,14 +8,15 @@
 //! The store is the workspace's; this modal is handed a list and reports what the
 //! user chose to do with it.
 
-use crate::assets::icon;
-use crate::documents::{Document, now_millis};
-use crate::fuzzy;
-use crate::relative_time::relative_time;
-use crate::theme;
+#[cfg(test)]
+use super::matching::MAX_MATCH_LINES;
+use super::matching::{MatchLine, Row, rows_for};
+use crate::documents::Document;
+use crate::ui::assets::icon;
 use crate::ui::code_block::highlighted_line;
 use crate::ui::modal::{ModalSize, fitted_panel, overlay};
 use crate::ui::single_line_input::{FieldMetrics, FieldState, SingleLineInput, ValueChanged};
+use crate::ui::theme;
 use gpui::{
     App, AppContext, Context, CursorStyle, Div, Entity, EventEmitter, FocusHandle, Focusable,
     FontWeight, InteractiveElement, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent,
@@ -23,10 +24,6 @@ use gpui::{
     StatefulInteractiveElement, Styled, Subscription, Window, div, prelude::FluentBuilder, px, rgb,
     rgba, svg,
 };
-use std::cmp::Reverse;
-
-/// How many matching lines to show under a calculation.
-const MAX_MATCH_LINES: usize = 4;
 
 const PANEL_WIDTH: f32 = 560.0;
 const PANEL_HEIGHT: f32 = 28.0 * theme::REM;
@@ -42,21 +39,6 @@ pub enum SearchEvent {
     Close,
     Open(u64),
     Delete(u64),
-}
-
-struct MatchLine {
-    text: SharedString,
-    /// Set when calculation lines were skipped before this one. Blank lines are
-    /// not a skip: there is nothing hidden to stand in for.
-    skipped_before: bool,
-}
-
-struct Row {
-    id: u64,
-    title: SharedString,
-    edited: SharedString,
-    /// The lines that matched the query. Empty when the name itself matched.
-    lines: Vec<MatchLine>,
 }
 
 pub struct SearchModal {
@@ -495,79 +477,6 @@ fn query_field_chrome(field: Stateful<Div>, _: FieldState) -> Stateful<Div> {
         .line_height(px(1.29 * theme::REM))
         .text_color(rgb(0xcdd4d7))
         .cursor(CursorStyle::IBeam)
-}
-
-/// The list the modal shows, in the order it shows it.
-///
-/// A name match stands on its own — no lines are shown under it, and it outranks
-/// anything found in the body of a calculation.
-fn rows_for(query: &str, all: &[Document]) -> Vec<Row> {
-    let now = now_millis();
-
-    if query.is_empty() {
-        return all
-            .iter()
-            .map(|document| row_at(document, Vec::new(), now))
-            .collect();
-    }
-
-    let mut by_name: Vec<(Row, i32)> = Vec::new();
-    let mut by_content: Vec<(Row, i32)> = Vec::new();
-
-    for document in all {
-        // An unnamed calculation is matched on the date it shows instead.
-        if let Some(score) = fuzzy::score(query, &document.display_title()) {
-            by_name.push((row_at(document, Vec::new(), now), score));
-            continue;
-        }
-
-        let lines: Vec<&str> = document.content.split('\n').collect();
-        let mut hits: Vec<(usize, &str, i32)> = lines
-            .iter()
-            .enumerate()
-            .map(|(index, line)| (index, line.trim()))
-            .filter(|(_, line)| !line.is_empty())
-            .filter_map(|(index, line)| fuzzy::score(query, line).map(|score| (index, line, score)))
-            .collect();
-        // Rank by the best hits, then restore source order for display.
-        hits.sort_by_key(|(_, _, score)| Reverse(*score));
-        hits.truncate(MAX_MATCH_LINES);
-        if hits.is_empty() {
-            continue;
-        }
-
-        let best = hits[0].2;
-        hits.sort_by_key(|(index, _, _)| *index);
-        let matches = hits
-            .iter()
-            .enumerate()
-            .map(|(position, (index, text, _))| MatchLine {
-                text: SharedString::from((*text).to_string()),
-                skipped_before: position > 0
-                    && lines[hits[position - 1].0 + 1..*index]
-                        .iter()
-                        .any(|line| !line.trim().is_empty()),
-            })
-            .collect();
-        by_content.push((row_at(document, matches, now), best));
-    }
-
-    by_name.sort_by_key(|(_, score)| Reverse(*score));
-    by_content.sort_by_key(|(_, score)| Reverse(*score));
-    by_name
-        .into_iter()
-        .chain(by_content)
-        .map(|(row, _)| row)
-        .collect()
-}
-
-fn row_at(document: &Document, lines: Vec<MatchLine>, now: i64) -> Row {
-    Row {
-        id: document.id,
-        title: SharedString::from(document.display_title()),
-        edited: SharedString::from(relative_time(document.updated_at, now)),
-        lines,
-    }
 }
 
 #[cfg(test)]

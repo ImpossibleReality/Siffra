@@ -1,52 +1,13 @@
-//! Shared text editing state for the calculator and compact text fields.
+//! Shared text editing state for the calculation and compact text fields.
 //!
 //! Views still decide how text is laid out and how a pointer maps to a byte
 //! offset. Everything independent of layout lives here: content, selection,
 //! grapheme and word boundaries, IME composition, and grouped undo/redo.
 
-use gpui::actions;
 use std::collections::VecDeque;
 use std::ops::Range;
 use std::time::{Duration, Instant};
 use unicode_segmentation::UnicodeSegmentation;
-
-// The editing commands both text views answer to, named here beside the buffer
-// they share so that neither view has to reach into the other for them.
-//
-// A view claims the ones it can honour and binds them in its own key context —
-// `SiffraEditor` for the calculation, `SiffraInput` for a single-line field — so
-// the same ⌘C means the same thing in both without either handler being in the
-// other's way. Naming them at all is what lets the menu bar find them: an item
-// is only offered when an action of its type is reachable from wherever the
-// keyboard is.
-actions!(
-    siffra,
-    [
-        Backspace,
-        Copy,
-        Cut,
-        Delete,
-        DeleteToLineStart,
-        DeleteWordLeft,
-        DeleteWordRight,
-        End,
-        Home,
-        Left,
-        Paste,
-        Redo,
-        Right,
-        SelectAll,
-        SelectEnd,
-        SelectHome,
-        SelectLeft,
-        SelectRight,
-        SelectWordLeft,
-        SelectWordRight,
-        Undo,
-        WordLeft,
-        WordRight,
-    ]
-);
 
 const GROUP_TIMEOUT: Duration = Duration::from_millis(1500);
 const MAX_ENTRIES: usize = 256;

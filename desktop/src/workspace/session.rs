@@ -1,4 +1,4 @@
-//! The window: one calculation open at a time, and everything that decides which
+//! The workspace session: one calculation open at a time, and everything that decides which
 //! one that is.
 //!
 //! There is no save command. A calculation is written to the store shortly after
@@ -12,12 +12,12 @@
 //! empty one that has never been named is nothing at all: it goes the moment it
 //! is left.
 
+use super::toolbar::{Toolbar, ToolbarEvent};
 use crate::documents::{Document, DocumentStore, database_path, now_millis};
 use crate::editor::layout::Fonts;
 use crate::editor::{ContentChanged, Editor};
 use crate::help::{CloseHelp, HelpModal};
 use crate::search::{SearchEvent, SearchModal};
-use crate::toolbar::{Toolbar, ToolbarEvent};
 use crate::updater;
 use gpui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, InteractiveElement, IntoElement,
@@ -76,7 +76,7 @@ impl Workspace {
         let toolbar = cx.new(Toolbar::new);
         let help = cx.new(|cx| HelpModal::new(mono_family.clone(), cx));
         let search = cx.new(|cx| SearchModal::new(mono_family, cx));
-        let editor = cx.new(|cx| Editor::new("", fonts, toolbar.clone(), cx));
+        let editor = cx.new(|cx| Editor::new("", fonts, cx));
 
         let subscriptions = vec![
             cx.subscribe_in(&toolbar, window, Self::on_toolbar_event),
@@ -408,9 +408,9 @@ impl Workspace {
                 self.set_help_open(open, window, cx);
             }
             ToolbarEvent::Rename(title) => self.rename_document(title.clone(), cx),
-            // The editor listens for this one itself; the bar needs nothing of
-            // the workspace to start a rename.
-            ToolbarEvent::NameEditingStarted => {}
+            ToolbarEvent::NameEditingStarted => self
+                .editor
+                .update(cx, |editor, cx| editor.name_editing_started(cx)),
             // Naming is an aside from typing, so the caret is left where the
             // rename interrupted it rather than moved to the end.
             ToolbarEvent::NameEditingFinished => self.focus_editor(window, cx),
@@ -553,7 +553,16 @@ impl Render for Workspace {
             .on_action(cx.listener(Self::toggle_always_on_top))
             .on_action(cx.listener(Self::check_for_updates))
             .on_action(cx.listener(Self::install_update))
-            .child(self.editor.clone())
+            .child(
+                div()
+                    .size_full()
+                    .flex()
+                    .flex_col()
+                    // The transparent native title bar leaves this strip for
+                    // workspace chrome and the platform traffic lights.
+                    .child(self.toolbar.clone())
+                    .child(div().flex_1().child(self.editor.clone())),
+            )
             .children(self.help_open.then(|| self.help.clone()))
             .children(self.search_open.then(|| self.search.clone()))
     }

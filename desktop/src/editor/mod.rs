@@ -7,34 +7,36 @@
 //! it — is derived from that string once per frame, which is what keeps a
 //! result sitting against the line it belongs to.
 
-mod element;
+mod actions;
+mod diagnostics;
+mod input_element;
+mod interaction;
 pub mod layout;
-mod result;
+mod render;
+pub(crate) mod result;
 
-use crate::diagnostics::{self, should_hide_diagnostic};
-use crate::engine::{Calculation, LineOutput};
-use crate::text_input::{
-    Backspace, Copy, Cut, Delete, DeleteToLineStart, DeleteWordLeft, DeleteWordRight, EditKind,
-    End, Home, Left, Paste, Redo, Right, SelectAll, SelectEnd, SelectHome, SelectLeft, SelectRight,
-    SelectWordLeft, SelectWordRight, TextBuffer, Undo, WordLeft, WordRight,
-};
-use crate::theme;
-use crate::toolbar::{Toolbar, ToolbarEvent};
-use crate::ui::easing::cubic_bezier;
+use crate::calculation::{Calculation, LineOutput};
+use crate::text::{EditKind, TextBuffer};
 use crate::ui::popover::{below_right, popover_button};
+use crate::ui::theme;
 use crate::ui::toast::Toast;
-use element::InputElement;
+use input_element::InputElement;
+use interaction::{CopyFlash, Drag, Fade, Granularity, Scrollbar};
 use layout::{Fonts, Layout, Metrics};
 use std::ops::Range;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
+pub use actions::{
+    DocumentEnd, DocumentStart, Down, Newline, SelectDown, SelectUp, ShowCharacterPalette, Up,
+};
+
 use gpui::{
-    App, Bounds, ClickEvent, ClipboardItem, Context, CursorStyle, Div, Entity, EntityInputHandler,
-    EventEmitter, FocusHandle, Focusable, FontWeight, InteractiveElement, IntoElement, MouseButton,
+    App, Bounds, ClickEvent, Context, CursorStyle, Div, EntityInputHandler, EventEmitter,
+    FocusHandle, Focusable, FontWeight, InteractiveElement, IntoElement, MouseButton,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Pixels, Point, Render,
-    ScrollHandle, SharedString, StatefulInteractiveElement, Styled, Subscription, Task,
-    UTF16Selection, Window, actions, div, point, prelude::FluentBuilder, px,
+    ScrollHandle, SharedString, StatefulInteractiveElement, Styled, Task, UTF16Selection, Window,
+    div, point, prelude::FluentBuilder, px,
 };
 
 /// Carries each line's last-edit time across an edit.
@@ -45,164 +47,12 @@ use gpui::{
 /// inserting a line near the top cost only that line: were the times simply
 /// indexed, every line below the insertion would shift by one and read as
 /// freshly typed, and the whole calculation would fall silent at once.
-fn carry_edit_times<T: std::marker::Copy>(
-    previous: &[String],
-    times: &[Option<T>],
-    next: &[String],
-    now: T,
-) -> Vec<Option<T>> {
-    let mut prefix = 0;
-    while prefix < previous.len() && prefix < next.len() && previous[prefix] == next[prefix] {
-        prefix += 1;
-    }
-
-    let mut suffix = 0;
-    while suffix < previous.len() - prefix
-        && suffix < next.len() - prefix
-        && previous[previous.len() - 1 - suffix] == next[next.len() - 1 - suffix]
-    {
-        suffix += 1;
-    }
-
-    let mut edited = vec![Some(now); next.len()];
-    for index in 0..prefix {
-        edited[index] = times.get(index).copied().flatten();
-    }
-    for offset in 0..suffix {
-        edited[next.len() - 1 - offset] = times.get(previous.len() - 1 - offset).copied().flatten();
-    }
-    edited
-}
-
-// What only a column of text can do. The rest of the editor's commands are the
-// ones every field shares, and live in `text_input`.
-actions!(
-    siffra,
-    [
-        Up,
-        Down,
-        SelectUp,
-        SelectDown,
-        DocumentStart,
-        DocumentEnd,
-        Newline,
-        ShowCharacterPalette,
-    ]
-);
-
-/// How the separator's fade stands between hidden and shown.
-struct Fade {
-    from: f32,
-    to: f32,
-    started: Instant,
-}
-
-impl Fade {
-    fn new(value: f32) -> Self {
-        Self {
-            from: value,
-            to: value,
-            started: Instant::now(),
-        }
-    }
-
-    fn set(&mut self, to: f32) {
-        if self.to == to {
-            return;
-        }
-        self.from = self.value();
-        self.to = to;
-        self.started = Instant::now();
-    }
-
-    fn value(&self) -> f32 {
-        let progress =
-            (self.started.elapsed().as_secs_f32() / theme::SEPARATOR_FADE).clamp(0.0, 1.0);
-        // Smoothstep gives this short fade a gentle start and end.
-        let eased = progress * progress * (3.0 - 2.0 * progress);
-        self.from + (self.to - self.from) * eased
-    }
-
-    fn settled(&self) -> bool {
-        self.started.elapsed().as_secs_f32() >= theme::SEPARATOR_FADE
-    }
-}
-
-/// How much of the text a drag takes at a time, set by the click that started
-/// it: a plain click selects to the character, a double click keeps whole words
-/// in the selection, and a triple click keeps whole lines.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Granularity {
-    Character,
-    Word,
-    Line,
-}
-
-/// A selection being dragged out with the button held down.
-struct Drag {
-    granularity: Granularity,
-    /// What the click that began the drag selected — a caret, a word or a line.
-    /// The selection always covers this, however far back over it the pointer
-    /// is dragged, which is what stops a double-click drag from losing the word
-    /// it started on.
-    anchor: Range<usize>,
-}
-
-/// Where the scrollbar was last drawn, so a drag on its thumb can be turned
-/// back into a scroll offset. All in window coordinates.
-#[derive(Clone, Copy)]
-struct Scrollbar {
-    track_top: Pixels,
-    track_height: Pixels,
-    thumb_top: Pixels,
-    thumb_height: Pixels,
-    /// How far the content can scroll, which is the travel the thumb's own
-    /// range of movement maps onto.
-    scroll_max: Pixels,
-}
-
-/// A result's copy animation and the moment it started.
-///
-/// Both effects are read from the clock, so a new copy only needs to replace
-/// the start time.
-#[derive(Clone, Copy)]
-struct CopyFlash {
-    result: usize,
-    at: Instant,
-}
-
-impl CopyFlash {
-    /// Whether the result is still holding the colour a copy leaves behind.
-    fn lit(&self) -> bool {
-        self.at.elapsed().as_secs_f32() < theme::COPY_FLASH
-    }
-
-    /// How far into the squish the result is, down to `scale(0.94)` and back.
-    fn scale(&self) -> f32 {
-        let elapsed = self.at.elapsed().as_secs_f32();
-        let leg = theme::COPY_SQUISH;
-        let (from, to, progress) = if elapsed < leg {
-            (1.0, theme::COPY_SCALE, elapsed / leg)
-        } else if elapsed < leg * 2.0 {
-            (theme::COPY_SCALE, 1.0, (elapsed - leg) / leg)
-        } else {
-            return 1.0;
-        };
-
-        let (x1, y1, x2, y2) = theme::COPY_EASE;
-        from + (to - from) * cubic_bezier(x1, y1, x2, y2, progress)
-    }
-}
-
 /// Emitted whenever the text changes, which is the workspace's cue that there is
 /// something new to save.
 pub struct ContentChanged;
 
 pub struct Editor {
     focus_handle: FocusHandle,
-    /// The top bar, positioned from the same window corner as the editor's
-    /// other absolute elements.
-    toolbar: Entity<Toolbar>,
     /// The only copy of the text, its selection, composition, and undo stack.
     pub(crate) text: TextBuffer,
     /// The column an up or down keypress aims for, so a run of them tracks
@@ -259,31 +109,16 @@ pub struct Editor {
     /// How far down the thumb the pointer took hold of it, so the thumb keeps
     /// its place under the pointer for the length of the drag.
     scrollbar_grab: Option<Pixels>,
-    _subscriptions: Vec<Subscription>,
 }
 
 impl EventEmitter<ContentChanged> for Editor {}
 
 impl Editor {
-    pub fn new(
-        content: impl Into<String>,
-        fonts: Fonts,
-        toolbar: Entity<Toolbar>,
-        cx: &mut Context<Self>,
-    ) -> Self {
+    pub fn new(content: impl Into<String>, fonts: Fonts, cx: &mut Context<Self>) -> Self {
         let content = content.into();
-
-        // Renaming takes the keyboard away from the calculation, so ⌘C there is
-        // about the name rather than about whatever the pointer was left over.
-        let subscriptions = vec![cx.subscribe(&toolbar, |editor, _, event, _| {
-            if matches!(event, ToolbarEvent::NameEditingStarted) {
-                editor.pointer_leads = false;
-            }
-        })];
 
         let mut editor = Self {
             focus_handle: cx.focus_handle(),
-            toolbar,
             text: TextBuffer::new(content),
             preferred_x: None,
             drag: None,
@@ -313,7 +148,6 @@ impl Editor {
             autoscroll: false,
             scrollbar: None,
             scrollbar_grab: None,
-            _subscriptions: subscriptions,
         };
 
         editor.recalculate();
@@ -324,6 +158,13 @@ impl Editor {
     /// Shows a short status message over the editor.
     pub fn show_toast(&mut self, message: impl Into<gpui::SharedString>, cx: &mut Context<Self>) {
         self.toast.show(message);
+        cx.notify();
+    }
+
+    /// The workspace has moved focus into its document-name field, so any
+    /// pending result hover no longer owns the copy command.
+    pub fn name_editing_started(&mut self, cx: &mut Context<Self>) {
+        self.pointer_leads = false;
         cx.notify();
     }
 
@@ -377,115 +218,6 @@ impl Editor {
     pub fn focus_end(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.focus_handle.focus(window);
         self.move_to(self.text.content().len(), cx);
-    }
-
-    /// Re-runs the calculation. Every line is re-evaluated, but only the lines
-    /// whose text or predecessors changed are actually recomputed.
-    fn recalculate(&mut self) {
-        let lines: Vec<String> = self
-            .text
-            .content()
-            .split('\n')
-            .map(str::to_string)
-            .collect();
-        self.note_edits(lines);
-        self.outputs = self.calculation.evaluate(self.text.content());
-    }
-
-    fn note_edits(&mut self, next: Vec<String>) {
-        self.line_edited_at = carry_edit_times(
-            &self.previous_lines,
-            &self.line_edited_at,
-            &next,
-            Instant::now(),
-        );
-        self.previous_lines = next;
-    }
-
-    /// How much of a line's settling time is left, or `None` once it has
-    /// settled and its diagnostic may be shown.
-    fn remaining_delay(&self, line: usize, now: Instant) -> Option<Duration> {
-        let edited = self.line_edited_at.get(line).copied().flatten()?;
-        let elapsed = now.saturating_duration_since(edited);
-        (elapsed < diagnostics::ERROR_DELAY).then(|| diagnostics::ERROR_DELAY - elapsed)
-    }
-
-    /// The line the caret is on, and whether it sits at that line's end — the
-    /// two things a diagnostic's visibility turns on. A selection is not a
-    /// caret and suppresses nothing.
-    fn caret_lines(&self) -> (Option<usize>, Option<usize>) {
-        if !self.text.selection().is_empty() {
-            return (None, None);
-        }
-
-        let caret = self.caret_offset();
-        let mut start = 0;
-        for (index, line) in self.text.content().split('\n').enumerate() {
-            let end = start + line.len();
-            if caret <= end {
-                return (Some(index), (caret == end).then_some(index));
-            }
-            start = end + 1;
-        }
-        (None, None)
-    }
-
-    /// Decides which results the column shows.
-    ///
-    /// A calculation is wrong for most of the time it is being typed, and a
-    /// diagnostic that appears on every keystroke is noise. An error is held
-    /// back until the typing on its line has settled, and while it is held back
-    /// whatever was already showing there stays put, so the column does not
-    /// flicker under the caret. Values are never held back — an answer is worth
-    /// having the moment there is one.
-    fn refresh_diagnostics(&mut self, cx: &mut Context<Self>) {
-        let lines: Vec<&str> = self.text.content().split('\n').collect();
-        let (cursor_line, cursor_line_at_end) = self.caret_lines();
-        let now = Instant::now();
-        let previous = &self.displayed;
-
-        let mut soonest: Option<Duration> = None;
-        let mut displayed = Vec::with_capacity(self.outputs.len());
-
-        for (index, output) in self.outputs.iter().enumerate() {
-            displayed.push(match output {
-                None => None,
-                Some(LineOutput::Value { .. }) => output.clone(),
-                Some(error @ LineOutput::Error { message, .. }) => {
-                    if should_hide_diagnostic(error, index, &lines, cursor_line, cursor_line_at_end)
-                    {
-                        None
-                    } else if message == "Incomplete expression" {
-                        // The caret has already left this line — that is the
-                        // only way an incomplete one gets this far — so there
-                        // is nothing left to wait for.
-                        Some(error.clone())
-                    } else if let Some(remaining) = self.remaining_delay(index, now) {
-                        soonest = Some(
-                            soonest.map_or(remaining, |soonest: Duration| soonest.min(remaining)),
-                        );
-                        previous
-                            .get(index)
-                            .cloned()
-                            .flatten()
-                            .filter(|shown| matches!(shown, LineOutput::Error { .. }))
-                    } else {
-                        Some(error.clone())
-                    }
-                }
-            });
-        }
-
-        self.displayed = displayed;
-        self.diagnostic_timer = soonest.map(|delay| {
-            cx.spawn(async move |editor, cx| {
-                cx.background_executor().timer(delay).await;
-                editor
-                    .update(cx, |editor, cx| editor.refresh_diagnostics(cx))
-                    .ok();
-            })
-        });
-        cx.notify();
     }
 
     fn move_to(&mut self, offset: usize, cx: &mut Context<Self>) {
@@ -609,248 +341,6 @@ impl Editor {
         self.recalculate();
         self.caret_moved(cx);
         cx.emit(ContentChanged);
-    }
-
-    fn undo(&mut self, _: &Undo, _: &mut Window, cx: &mut Context<Self>) {
-        if self.text.undo() {
-            self.after_restore(cx);
-        }
-    }
-
-    fn redo(&mut self, _: &Redo, _: &mut Window, cx: &mut Context<Self>) {
-        if self.text.redo() {
-            self.after_restore(cx);
-        }
-    }
-
-    fn after_restore(&mut self, cx: &mut Context<Self>) {
-        self.text_changed(cx);
-    }
-
-    fn left(&mut self, _: &Left, _: &mut Window, cx: &mut Context<Self>) {
-        self.preferred_x = None;
-        if self.text.selection().is_empty() {
-            self.move_to(self.previous_boundary(self.caret_offset()), cx);
-        } else {
-            self.move_to(self.text.selection().start, cx);
-        }
-    }
-
-    fn right(&mut self, _: &Right, _: &mut Window, cx: &mut Context<Self>) {
-        self.preferred_x = None;
-        if self.text.selection().is_empty() {
-            self.move_to(self.next_boundary(self.caret_offset()), cx);
-        } else {
-            self.move_to(self.text.selection().end, cx);
-        }
-    }
-
-    fn select_left(&mut self, _: &SelectLeft, _: &mut Window, cx: &mut Context<Self>) {
-        self.preferred_x = None;
-        self.select_to(self.previous_boundary(self.caret_offset()), cx);
-    }
-
-    fn select_right(&mut self, _: &SelectRight, _: &mut Window, cx: &mut Context<Self>) {
-        self.preferred_x = None;
-        self.select_to(self.next_boundary(self.caret_offset()), cx);
-    }
-
-    fn word_left(&mut self, _: &WordLeft, _: &mut Window, cx: &mut Context<Self>) {
-        self.preferred_x = None;
-        self.move_to(self.previous_word_boundary(self.caret_offset()), cx);
-    }
-
-    fn word_right(&mut self, _: &WordRight, _: &mut Window, cx: &mut Context<Self>) {
-        self.preferred_x = None;
-        self.move_to(self.next_word_boundary(self.caret_offset()), cx);
-    }
-
-    fn select_word_left(&mut self, _: &SelectWordLeft, _: &mut Window, cx: &mut Context<Self>) {
-        self.preferred_x = None;
-        self.select_to(self.previous_word_boundary(self.caret_offset()), cx);
-    }
-
-    fn select_word_right(&mut self, _: &SelectWordRight, _: &mut Window, cx: &mut Context<Self>) {
-        self.preferred_x = None;
-        self.select_to(self.next_word_boundary(self.caret_offset()), cx);
-    }
-
-    fn delete_word_left(&mut self, _: &DeleteWordLeft, _: &mut Window, cx: &mut Context<Self>) {
-        if self.text.selection().is_empty() {
-            let caret = self.caret_offset();
-            self.text
-                .set_selection_for_edit(self.previous_word_boundary(caret)..caret);
-        }
-        self.replace_selection("", EditKind::Discrete, cx);
-    }
-
-    fn delete_word_right(&mut self, _: &DeleteWordRight, _: &mut Window, cx: &mut Context<Self>) {
-        if self.text.selection().is_empty() {
-            let caret = self.caret_offset();
-            self.text
-                .set_selection_for_edit(caret..self.next_word_boundary(caret));
-        }
-        self.replace_selection("", EditKind::Discrete, cx);
-    }
-
-    fn up(&mut self, _: &Up, _: &mut Window, cx: &mut Context<Self>) {
-        self.move_vertically(-1.0, false, cx);
-    }
-
-    fn down(&mut self, _: &Down, _: &mut Window, cx: &mut Context<Self>) {
-        self.move_vertically(1.0, false, cx);
-    }
-
-    fn select_up(&mut self, _: &SelectUp, _: &mut Window, cx: &mut Context<Self>) {
-        self.move_vertically(-1.0, true, cx);
-    }
-
-    fn select_down(&mut self, _: &SelectDown, _: &mut Window, cx: &mut Context<Self>) {
-        self.move_vertically(1.0, true, cx);
-    }
-
-    fn home(&mut self, _: &Home, _: &mut Window, cx: &mut Context<Self>) {
-        self.preferred_x = None;
-        if let Some((start, _)) = self.row_bounds(self.caret_offset()) {
-            self.move_to(start, cx);
-        }
-    }
-
-    fn end(&mut self, _: &End, _: &mut Window, cx: &mut Context<Self>) {
-        self.preferred_x = None;
-        if let Some((_, end)) = self.row_bounds(self.caret_offset()) {
-            self.move_to(end, cx);
-        }
-    }
-
-    fn select_home(&mut self, _: &SelectHome, _: &mut Window, cx: &mut Context<Self>) {
-        self.preferred_x = None;
-        if let Some((start, _)) = self.row_bounds(self.caret_offset()) {
-            self.select_to(start, cx);
-        }
-    }
-
-    fn select_end(&mut self, _: &SelectEnd, _: &mut Window, cx: &mut Context<Self>) {
-        self.preferred_x = None;
-        if let Some((_, end)) = self.row_bounds(self.caret_offset()) {
-            self.select_to(end, cx);
-        }
-    }
-
-    fn document_start(&mut self, _: &DocumentStart, _: &mut Window, cx: &mut Context<Self>) {
-        self.preferred_x = None;
-        self.move_to(0, cx);
-    }
-
-    fn document_end(&mut self, _: &DocumentEnd, _: &mut Window, cx: &mut Context<Self>) {
-        self.preferred_x = None;
-        self.move_to(self.text.content().len(), cx);
-    }
-
-    fn select_all(&mut self, _: &SelectAll, _: &mut Window, cx: &mut Context<Self>) {
-        self.text.select_all();
-        self.caret_moved(cx);
-    }
-
-    fn backspace(&mut self, _: &Backspace, _: &mut Window, cx: &mut Context<Self>) {
-        if self.text.selection().is_empty() {
-            let caret = self.caret_offset();
-            self.text
-                .set_selection_for_edit(self.previous_boundary(caret)..caret);
-        }
-        self.replace_selection("", EditKind::DeleteBackward, cx);
-    }
-
-    fn delete(&mut self, _: &Delete, _: &mut Window, cx: &mut Context<Self>) {
-        if self.text.selection().is_empty() {
-            let caret = self.caret_offset();
-            self.text
-                .set_selection_for_edit(caret..self.next_boundary(caret));
-        }
-        self.replace_selection("", EditKind::DeleteForward, cx);
-    }
-
-    fn delete_to_line_start(
-        &mut self,
-        _: &DeleteToLineStart,
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if self.text.selection().is_empty()
-            && let Some((start, _)) = self.row_bounds(self.caret_offset())
-        {
-            self.text.set_selection_for_edit(start..self.caret_offset());
-        }
-        self.replace_selection("", EditKind::Discrete, cx);
-    }
-
-    fn newline(&mut self, _: &Newline, _: &mut Window, cx: &mut Context<Self>) {
-        self.replace_selection("\n", EditKind::Discrete, cx);
-    }
-
-    /// The value on a line, if that is what it produced. An error has nothing
-    /// worth copying, and a line that produced nothing has nothing at all.
-    fn value_at(&self, index: usize) -> Option<&str> {
-        match self.displayed.get(index)?.as_ref()? {
-            LineOutput::Value { string, .. } if !string.is_empty() => Some(string),
-            _ => None,
-        }
-    }
-
-    /// Takes a result, at full precision rather than as much of it as the column
-    /// had room to show.
-    fn copy_result(&mut self, index: usize, cx: &mut Context<Self>) {
-        let Some(value) = self.value_at(index) else {
-            return;
-        };
-
-        cx.write_to_clipboard(ClipboardItem::new_string(value.to_string()));
-        self.copy_flash = Some(CopyFlash {
-            result: index,
-            at: Instant::now(),
-        });
-        self.toast.show("Copied!");
-        cx.notify();
-    }
-
-    fn copy(&mut self, _: &Copy, _: &mut Window, cx: &mut Context<Self>) {
-        // A result copy takes precedence while the pointer is over a result —
-        // but only while the pointer is what the user moved last. A pointer left
-        // over a result while they went on typing is not a request to copy it,
-        // so from the first keystroke onwards ⌘C is the selected text's again.
-        if let Some(index) = self.hovered_result
-            && self.pointer_leads
-            && self.value_at(index).is_some()
-        {
-            self.copy_result(index, cx);
-            return;
-        }
-
-        if let Some(text) = self.text.selected_text() {
-            cx.write_to_clipboard(ClipboardItem::new_string(text.to_string()));
-        }
-    }
-
-    fn cut(&mut self, _: &Cut, _: &mut Window, cx: &mut Context<Self>) {
-        if let Some(text) = self.text.selected_text() {
-            cx.write_to_clipboard(ClipboardItem::new_string(text.to_string()));
-            self.replace_selection("", EditKind::Discrete, cx);
-        }
-    }
-
-    fn paste(&mut self, _: &Paste, _: &mut Window, cx: &mut Context<Self>) {
-        if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) {
-            self.replace_selection(&text, EditKind::Discrete, cx);
-        }
-    }
-
-    fn show_character_palette(
-        &mut self,
-        _: &ShowCharacterPalette,
-        window: &mut Window,
-        _: &mut Context<Self>,
-    ) {
-        window.show_character_palette();
     }
 
     /// A point in window coordinates as an offset into the text.
@@ -1519,9 +1009,6 @@ impl Render for Editor {
                     }
                 }),
             )
-            // The window's own title bar is drawn transparent, so this bar
-            // stands in for it and keeps the traffic lights clear of the text.
-            .child(self.toolbar.clone())
             .child(
                 div()
                     .id("editor-scroll")
@@ -1676,7 +1163,7 @@ impl Editor {
 
 #[cfg(test)]
 mod tests {
-    use super::carry_edit_times;
+    use super::diagnostics::carry_edit_times;
 
     fn lines(text: &str) -> Vec<String> {
         text.split('\n').map(str::to_string).collect()
