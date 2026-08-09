@@ -1,12 +1,3 @@
-//! The editor: a column of input, a column of results, and the rulers that tie
-//! one to the other.
-//!
-//! The text is a plain `String` addressed by plain byte offsets, so there is no
-//! document model to keep in step with what is on screen. Everything else —
-//! where a line wrapped, how tall it stands, how much of a result fits beside
-//! it — is derived from that string once per frame, which is what keeps a
-//! result sitting against the line it belongs to.
-
 mod actions;
 mod diagnostics;
 mod input_element;
@@ -39,75 +30,45 @@ use gpui::{
     div, point, prelude::FluentBuilder, px,
 };
 
-/// Carries each line's last-edit time across an edit.
-///
-/// The lines the edit did not touch are found by matching the old text against
-/// the new from both ends, and keep the time they had; everything between the
-/// two runs counts as just edited. Matching from both ends is what makes
-/// inserting a line near the top cost only that line: were the times simply
-/// indexed, every line below the insertion would shift by one and read as
-/// freshly typed, and the whole calculation would fall silent at once.
-/// Emitted whenever the text changes, which is the workspace's cue that there is
-/// something new to save.
+/// Emitted after the document changes.
 pub struct ContentChanged;
 
 pub struct Editor {
     focus_handle: FocusHandle,
-    /// The only copy of the text, its selection, composition, and undo stack.
     pub(crate) text: TextBuffer,
-    /// The column an up or down keypress aims for, so a run of them tracks
-    /// straight down past short lines instead of drifting in from their ends.
+    /// Desired x-coordinate for vertical caret movement.
     preferred_x: Option<Pixels>,
     drag: Option<Drag>,
     caret_visible: bool,
     blink: Option<Task<()>>,
     calculation: Calculation,
-    /// What every line evaluates to, whether or not it is being shown yet.
     outputs: Vec<Option<LineOutput>>,
-    /// What the results column is actually showing — `outputs` with diagnostics
-    /// that are still settling held back.
+    /// Results currently visible after diagnostic suppression.
     displayed: Vec<Option<LineOutput>>,
-    /// The text as it stood at the last edit, and when each of its lines was
-    /// last touched. A line is only held back from complaining about itself
-    /// while it is the one being typed.
     previous_lines: Vec<String>,
     line_edited_at: Vec<Option<Instant>>,
-    /// Wakes the editor when the diagnostic held back longest falls due.
     diagnostic_timer: Option<Task<()>>,
     fonts: Fonts,
-    /// The share of the window the results column takes, as dragged.
     output_fraction: f32,
     dragging_separator: bool,
     separator_hovered: bool,
     separator_fade: Fade,
-    /// The result's pointer state, tracked so the painted vinculum matches the
-    /// color of the text under it.
     hovered_result: Option<usize>,
-    /// Whether the pointer has moved since the keyboard last did anything —
-    /// which is what decides who ⌘C belongs to. A result resting under a
-    /// forgotten pointer is not what the user is looking at while they type, so
-    /// it only takes the copy when the pointer was the last thing they moved.
+    /// Whether pointer activity has priority for copy.
     pointer_leads: bool,
     pressed_result: Option<usize>,
-    /// The result whose popover is showing, if any. Only ever one: opening a
-    /// second closes the first, as clicking anywhere else does.
+    /// Index of the open result popover, if any.
     open_result: Option<usize>,
-    /// Set by a press that has already been accounted for, so the press that
-    /// opens a popover — or that lands inside one — is not also taken as the
-    /// press outside it that should close it.
+    /// Prevents a handled press from closing the popover.
     press_handled: bool,
     copy_flash: Option<CopyFlash>,
     toast: Toast,
-    /// Where the text was last painted, for turning a click into an offset.
     text_bounds: Option<Bounds<Pixels>>,
     layout: Option<Rc<Layout>>,
     scroll: ScrollHandle,
     autoscroll: bool,
-    /// `None` while the calculation fits in the window and there is nothing to
-    /// scroll.
+    /// Scrollbar state, or `None` when content fits.
     scrollbar: Option<Scrollbar>,
-    /// How far down the thumb the pointer took hold of it, so the thumb keeps
-    /// its place under the pointer for the length of the drag.
     scrollbar_grab: Option<Pixels>,
 }
 
@@ -155,14 +116,11 @@ impl Editor {
         editor
     }
 
-    /// Shows a short status message over the editor.
     pub fn show_toast(&mut self, message: impl Into<gpui::SharedString>, cx: &mut Context<Self>) {
         self.toast.show(message);
         cx.notify();
     }
 
-    /// The workspace has moved focus into its document-name field, so any
-    /// pending result hover no longer owns the copy command.
     pub fn name_editing_started(&mut self, cx: &mut Context<Self>) {
         self.pointer_leads = false;
         cx.notify();
@@ -176,14 +134,12 @@ impl Editor {
         self.text.content()
     }
 
-    /// Where the caret sits, in UTF-16 code units used by platform text input.
+    /// Returns the caret as a UTF-16 offset for platform text input.
     pub fn cursor(&self) -> usize {
         self.text.offset_to_utf16(self.caret_offset())
     }
 
-    /// Shows another calculation. Nothing of the last one is carried over: not
-    /// its undo history, not how far it was scrolled, and not which of its lines
-    /// were still settling.
+    /// Replaces the document and resets transient editor state.
     pub fn set_document(&mut self, content: &str, cursor: usize, cx: &mut Context<Self>) {
         self.text.reset(content);
         let caret = self.text.offset_from_utf16(cursor);
@@ -201,20 +157,14 @@ impl Editor {
         self.layout = None;
         self.scroll.set_offset(point(px(0.0), px(0.0)));
         self.recalculate();
-        // Loaded diagnostics are due immediately; recalculation initializes
-        // their edit times.
         self.line_edited_at = Vec::new();
         self.caret_moved(cx);
     }
 
-    /// Hands the keyboard back to the calculation, leaving the caret where it
-    /// was — which for a calculation just opened is where it was left.
     pub fn focus(&mut self, window: &mut Window) {
         self.focus_handle.focus(window);
     }
 
-    /// Puts the caret at the end of the calculation and the keyboard with it,
-    /// which is where a calculation just created carries on from.
     pub fn focus_end(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.focus_handle.focus(window);
         self.move_to(self.text.content().len(), cx);
@@ -230,17 +180,10 @@ impl Editor {
         self.caret_moved(cx);
     }
 
-    /// Restarts the blink so the caret shows solid the moment it moves, rather
-    /// than possibly arriving mid-blink.
     fn caret_moved(&mut self, cx: &mut Context<Self>) {
-        // Every edit, every caret move and every change of selection arrives
-        // here, and each of them is the keyboard taking the lead back from the
-        // pointer.
         self.pointer_leads = false;
         self.caret_visible = true;
         self.autoscroll = true;
-        // Which diagnostics are worth showing turns on where the caret is, so
-        // moving it can reveal one as readily as typing can.
         self.refresh_diagnostics(cx);
         self.blink = Some(cx.spawn(async move |editor, cx| {
             loop {
@@ -275,14 +218,10 @@ impl Editor {
         self.text.next_word_boundary(offset)
     }
 
-    /// The word under `offset`, for a double click. A click that lands between
-    /// two words takes the one before it, as a double click in a text field
-    /// does.
     fn word_range_at(&self, offset: usize) -> Range<usize> {
         self.text.word_range_at(offset)
     }
 
-    /// The whole line `offset` sits on, for a triple click.
     fn line_range_at(&self, offset: usize) -> Range<usize> {
         let Some(layout) = self.layout.as_ref() else {
             return offset..offset;
@@ -291,8 +230,6 @@ impl Editor {
         line.start..line.start + line.len
     }
 
-    /// The offsets of the visual row `offset` sits on — the row the text
-    /// wrapped onto, not the whole line, which is what Home and End address.
     fn row_bounds(&self, offset: usize) -> Option<(usize, usize)> {
         let layout = self.layout.as_ref()?;
         let position = layout.position_for_offset(offset)?;
@@ -312,9 +249,6 @@ impl Editor {
 
         let x = self.preferred_x.unwrap_or(position.x);
         let line_height = layout.metrics.line_height;
-        // Half a row down from the target row's top: anywhere inside the row
-        // resolves to it, and the midpoint cannot be pushed into a neighbour by
-        // a rounding error.
         let y = position.y + line_height * rows + line_height / 2.0;
         let offset = layout.offset_for_position(point(x, y));
 
@@ -326,16 +260,11 @@ impl Editor {
         self.preferred_x = Some(x);
     }
 
-    /// Replaces the selection, recording the edit under `kind` so undo can tell
-    /// a run of typing from the paste that followed it.
     fn replace_selection(&mut self, text: &str, kind: EditKind, cx: &mut Context<Self>) {
         self.text.replace_selection(text, kind);
         self.text_changed(cx);
     }
 
-    /// What every change to the text has in common: the calculation is re-run,
-    /// the caret is settled, and the workspace is told there is something to
-    /// save.
     fn text_changed(&mut self, cx: &mut Context<Self>) {
         self.preferred_x = None;
         self.recalculate();
@@ -343,7 +272,6 @@ impl Editor {
         cx.emit(ContentChanged);
     }
 
-    /// A point in window coordinates as an offset into the text.
     fn offset_for_position(&self, position: Point<Pixels>) -> usize {
         let (Some(bounds), Some(layout)) = (self.text_bounds, self.layout.as_ref()) else {
             return 0;
@@ -362,15 +290,8 @@ impl Editor {
         self.text.close_history_group();
         let offset = self.offset_for_position(event.position);
 
-        // The click that starts a drag also fixes what the drag takes at a
-        // time. A second click anchors on the word under the pointer and a
-        // third on the whole line, and dragging from either grows the selection
-        // in those same units, the way a text field on this platform does.
         let (granularity, anchor) = match event.click_count {
             0 | 1 if event.modifiers.shift => {
-                // Shift-click moves the near end of what is already selected and
-                // leaves the far one where it is, so the click extends rather
-                // than replaces.
                 let fixed = if self.text.selection_reversed() {
                     self.text.selection().end
                 } else {
@@ -390,9 +311,6 @@ impl Editor {
         self.drag_to(offset, cx);
     }
 
-    /// Where a drag has reached: the range the click anchored on, grown to take
-    /// in whatever the pointer is over — to the character, the word or the line,
-    /// depending on how the drag began.
     fn drag_to(&mut self, offset: usize, cx: &mut Context<Self>) {
         let Some(drag) = self.drag.as_ref() else {
             return;
@@ -406,16 +324,12 @@ impl Editor {
         let anchor = drag.anchor.clone();
 
         let selection = anchor.start.min(reach.start)..anchor.end.max(reach.end);
-        // Dragging back past where it began leaves the caret at the near end,
-        // so a key pressed afterwards carries on from there.
         self.text
             .set_selection(selection, reach.start < anchor.start);
         self.caret_moved(cx);
     }
 
     fn on_mouse_move(&mut self, event: &MouseMoveEvent, _: &mut Window, cx: &mut Context<Self>) {
-        // Noted before the drag is followed, so a move that drags out a
-        // selection hands the lead straight back to the keyboard.
         self.pointer_leads = true;
 
         if self.drag.is_some() {
@@ -424,7 +338,6 @@ impl Editor {
         }
 
         if self.dragging_separator {
-            // Keep the results column's share on the right of the pointer.
             let width = f32::from(
                 self.layout
                     .as_ref()
@@ -454,18 +367,6 @@ impl Editor {
         }
     }
 
-    /// Brings the caret back into view after it has moved.
-    ///
-    /// This runs while the frame is being laid out rather than after the text
-    /// has been measured, because the scrolling container reads its offset when
-    /// it prepaints — which is after this and before anything is drawn. Setting
-    /// the offset any later would land on the following frame, and the frame
-    /// after a keystroke is not otherwise asked for, so the caret would sit off
-    /// the bottom of the window until the next blink came round to redraw it.
-    ///
-    /// Everything it needs is known without measuring: the viewport is the
-    /// window less the title strip, and the text starts one gutter down from
-    /// the top of the scrolled content.
     fn scroll_caret_into_view(&self, layout: &Layout, view_height: Pixels, content_height: Pixels) {
         let Some(position) = layout.position_for_offset(self.caret_offset()) else {
             return;
@@ -475,13 +376,10 @@ impl Editor {
         }
 
         let margin = px(theme::GUTTER);
-        // The caret's row, in the scrolled content's own coordinates.
         let top = px(theme::GUTTER) + position.y;
         let bottom = top + layout.metrics.line_height;
 
         let mut offset = self.scroll.offset();
-        // `offset.y` is how far the content has been pushed up, and so is zero
-        // or negative.
         let view_top = -offset.y;
         if top - margin < view_top {
             offset.y = -(top - margin);
@@ -496,8 +394,6 @@ impl Editor {
         self.scroll.set_offset(offset);
     }
 
-    /// Scrolls so the thumb's top lands at `top`, which is how a drag on the
-    /// thumb is turned back into an offset.
     fn scroll_to_thumb_top(&self, top: Pixels, bar: Scrollbar) {
         let travel = bar.track_height - bar.thumb_height;
         let progress = if travel > px(0.0) {
@@ -510,9 +406,6 @@ impl Editor {
         self.scroll.set_offset(offset);
     }
 
-    /// Keeps the same proportion of a calculation above the viewport when a
-    /// font-size breakpoint changes. The pixel offset itself cannot be kept:
-    /// every line has just changed height.
     fn preserve_scroll_position_for_font_resize(
         &self,
         content_height: Pixels,
@@ -530,24 +423,16 @@ impl Editor {
         self.scroll.set_offset(offset);
     }
 
-    /// Works out where the scrollbar goes, and remembers it so a drag on the
-    /// thumb has something to work back from. `None` while the calculation fits
-    /// in the window.
     fn measure_scrollbar(&mut self, view_height: Pixels, content_height: Pixels) {
         let scroll_max = content_height - view_height;
-        // Half a pixel of overflow is rounding, not something to scroll.
         if scroll_max <= px(0.5) || view_height <= px(0.0) {
             self.scrollbar = None;
             return;
         }
 
         let inset = px(theme::SCROLLBAR_INSET);
-        // The bar runs to the bottom edge, where the window's rounded corner
-        // would clip its lower end, so the track stops short of the arc.
         let foot = inset + px(theme::corner_clearance(theme::SCROLLBAR_INSET));
         let track_height = (view_height - inset - foot).max(px(0.0));
-        // The thumb is as long a share of the track as the window is of the
-        // document, down to a length that can still be caught with a pointer.
         let thumb_height = (track_height * (f32::from(view_height) / f32::from(content_height)))
             .max(px(theme::SCROLLBAR_MIN_THUMB))
             .min(track_height);
@@ -609,7 +494,6 @@ impl Editor {
             .items_center()
             .justify_end();
 
-        // An empty row keeps this column aligned with the input.
         let Some(output) = output else {
             return row;
         };
@@ -642,8 +526,6 @@ impl Editor {
                     MouseButton::Left,
                     cx.listener(move |editor, _: &MouseDownEvent, _, cx| {
                         editor.pressed_result = Some(index);
-                        // The press that opens a popover must not also read as
-                        // the press outside one that closes it.
                         editor.press_handled = true;
                         cx.notify();
                     }),
@@ -668,21 +550,10 @@ impl Editor {
         )
     }
 
-    /// The panel under an open result: the value it holds at full precision and
-    /// a button to take it, or — for a line that did not work out — what went
-    /// wrong and where.
-    ///
-    /// It is drawn at the top of the window rather than beside the result it
-    /// belongs to, so that nothing clips it. Where it goes is arithmetic on what
-    /// has already been measured: the result's row is a known height a known
-    /// distance down the scrolled content, and its right edge is the column's,
-    /// which is the window's less a gutter.
     fn render_popover(&self, layout: &Layout, cx: &mut Context<Self>) -> Option<Div> {
         let index = self.open_result?;
         let output = self.displayed.get(index)?.as_ref()?;
 
-        // The result stands taller than the row holding it and is centred in it,
-        // so it overhangs by the same amount top and bottom.
         let result_height = px(theme::ROOT_LINE_HEIGHT + 2.0 * theme::OUTPUT_PADDING_Y);
         let row_height = layout.lines.get(index)?.height;
         let row_top =
@@ -692,7 +563,6 @@ impl Editor {
         let panel = below_right(bottom, px(theme::GUTTER))
             .flex()
             .flex_col()
-            // A press inside the panel is not a press outside it.
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(|editor, _: &MouseDownEvent, _, _| {
@@ -757,7 +627,6 @@ impl Focusable for Editor {
     }
 }
 
-// Convert between the platform's UTF-16 offsets and the text's UTF-8 offsets.
 impl Editor {
     fn offset_to_utf16(&self, offset: usize) -> usize {
         self.text.offset_to_utf16(offset)
@@ -874,8 +743,6 @@ impl Render for Editor {
             .is_some_and(|previous| previous.metrics.font_size != layout.metrics.font_size);
         self.layout = Some(layout.clone());
 
-        // Before wrapping makes the column boundary matter, the separator only
-        // appears while hovered or dragged.
         self.separator_fade.set(
             if layout.any_wrapped || self.separator_hovered || self.dragging_separator {
                 1.0
@@ -892,10 +759,6 @@ impl Render for Editor {
             (viewport.height - px(theme::NAV_HEIGHT) - px(2.0 * theme::GUTTER)).max(px(0.0));
         let budget = metrics.output_character_budget();
 
-        // What the scrolling container holds, and how much of it shows. Both
-        // follow from the window and the text without measuring anything: the
-        // columns are a gutter's padding around the taller of the text and the
-        // window, and the container is the window less the title strip.
         let view_height = viewport.height - px(theme::NAV_HEIGHT);
         let content_height = layout.content_height().max(min_height) + px(2.0 * theme::GUTTER);
 
@@ -907,8 +770,6 @@ impl Render for Editor {
         }
         self.measure_scrollbar(view_height, content_height);
 
-        // Which diagnostics are on show was settled when the text or the caret
-        // last moved; drawing a frame does not reconsider it.
         let visible = |index: usize| -> Option<&LineOutput> {
             self.displayed.get(index).and_then(|output| output.as_ref())
         };
@@ -922,9 +783,6 @@ impl Render for Editor {
             })
             .collect();
 
-        // What each diagnostic on show is pointing at, marked out in the text
-        // itself. The engine counts a span in characters, as the parser handed
-        // it over; the text is addressed in bytes.
         let error_spans: Vec<Option<Range<usize>>> = layout
             .lines
             .iter()
@@ -976,8 +834,6 @@ impl Render for Editor {
         let popover = self.render_popover(&layout, cx);
         let toast = self.toast.render();
 
-        // Both of these are read off the clock rather than driven by a timer, so
-        // a frame is only worth drawing while one of them is still moving.
         if self.toast.animating() || self.copy_flash.is_some_and(|flash| flash.lit()) {
             window.request_animation_frame();
         }
@@ -996,10 +852,6 @@ impl Render for Editor {
             .on_mouse_move(cx.listener(Self::on_mouse_move))
             .on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
             .on_mouse_up_out(MouseButton::Left, cx.listener(Self::on_mouse_up))
-            // Registered before anything inside it, and so run after all of
-            // them: by the time this is reached, a press that belonged to the
-            // popover or to the result holding it open has said so, and any
-            // other press is one that lands outside and closes it.
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(|editor, _: &MouseDownEvent, _, cx| {
@@ -1020,13 +872,7 @@ impl Render for Editor {
                             .relative()
                             .flex()
                             .flex_row()
-                            // Left at the flex default of `stretch`: the
-                            // separator is a 1px anchor with nothing in the
-                            // flow to give it height, and it has to run the
-                            // full height of the row to be grabbable at all.
                             .w_full()
-                            // Behind everything, and inset by the same 1rem the
-                            // two columns are, so the rows line up.
                             .child(
                                 div()
                                     .absolute()
@@ -1095,20 +941,13 @@ impl Render for Editor {
                             ),
                     ),
             )
-            // Over the content rather than beside it, so showing the bar does
-            // not narrow the columns and re-wrap the text under it.
             .children(self.render_scrollbar(cx))
-            // Above the columns, and outside the scrolling container so that
-            // nothing clips either of them.
             .children(popover)
             .children(toast)
     }
 }
 
-/// Where a character index falls in a line, in bytes.
-///
-/// Error spans are counted in characters, because that is how the parser reads
-/// its input; the text is addressed in bytes everywhere else.
+/// Converts a character index to a UTF-8 byte offset.
 fn byte_offset(text: &str, characters: usize) -> usize {
     text.char_indices()
         .nth(characters)
@@ -1119,8 +958,6 @@ impl Editor {
     fn render_separator(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let grab = px(theme::SEPARATOR_GRAB_PADDING);
 
-        // A 1px anchor in the flow, with the grab area hung off it and shifted
-        // half its own width left, so the rule sits exactly on the boundary.
         div()
             .w(px(theme::SEPARATOR_WIDTH))
             .flex_shrink_0()
@@ -1131,7 +968,6 @@ impl Editor {
                     .absolute()
                     .top_0()
                     .bottom_0()
-                    // Center the grab box on the 1px boundary.
                     .left(-(grab + px(theme::SEPARATOR_WIDTH / 2.0)))
                     .w(grab * 2.0 + px(theme::SEPARATOR_WIDTH))
                     .flex()
@@ -1169,7 +1005,6 @@ mod tests {
         text.split('\n').map(str::to_string).collect()
     }
 
-    /// `1` stands for a line last edited a while ago, `2` for one just typed.
     fn carry(previous: &str, times: &[u32], next: &str) -> Vec<Option<u32>> {
         let times: Vec<Option<u32>> = times.iter().map(|time| Some(*time)).collect();
         carry_edit_times(&lines(previous), &times, &lines(next), 2)
@@ -1193,9 +1028,6 @@ mod tests {
 
     #[test]
     fn inserting_a_line_costs_only_that_line() {
-        // Were the times indexed rather than matched from both ends, the `b`
-        // that moved down a row would read as freshly typed, and its
-        // diagnostic would go quiet for no reason.
         assert_eq!(
             carry("a\nb", &[1, 1], "a\n\nb"),
             [Some(1), Some(2), Some(1)]

@@ -61,7 +61,6 @@ fn main() {
             .filter(|o| !fails_only || is_fail(&o.status))
             .collect();
         if shown.is_empty() {
-            // Still fold the category into the totals below.
             for o in rows {
                 totals.add(&o.status);
             }
@@ -200,7 +199,6 @@ impl Totals {
     }
 }
 
-/// Compact number rendering: keeps small integers integral, otherwise 6 sig figs.
 fn num(v: f64) -> String {
     if v == 0.0 {
         return "0".into();

@@ -1,9 +1,3 @@
-//! Shared text editing state for the calculation and compact text fields.
-//!
-//! Views still decide how text is laid out and how a pointer maps to a byte
-//! offset. Everything independent of layout lives here: content, selection,
-//! grapheme and word boundaries, IME composition, and grouped undo/redo.
-
 use std::collections::VecDeque;
 use std::ops::Range;
 use std::time::{Duration, Instant};
@@ -191,9 +185,7 @@ impl TextBuffer {
         self.selection_prepared_for_edit = false;
     }
 
-    /// Selects a range that the next edit will replace without closing the
-    /// current history group. Backspace and delete use this so consecutive
-    /// deletions remain one undo step.
+    /// Selects a range for the next edit without closing its history group.
     pub fn set_selection_for_edit(&mut self, selection: Range<usize>) {
         self.selection =
             selection.start.min(self.content.len())..selection.end.min(self.content.len());

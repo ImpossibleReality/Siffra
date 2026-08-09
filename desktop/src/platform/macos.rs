@@ -5,12 +5,9 @@ use objc2_app_kit::{
     NSApplication, NSFloatingWindowLevel, NSMenu, NSNormalWindowLevel, NSView, NSWindow,
 };
 
-/// Runs `body` against the `NSWindow` behind a GPUI window, if there is one.
 fn with_native_window(window: &gpui::Window, body: impl FnOnce(&NSWindow)) {
     use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
-    // Use the raw-window-handle trait explicitly; GPUI's method has different
-    // semantics from the platform handle needed here.
     let Ok(handle) = HasWindowHandle::window_handle(window) else {
         return;
     };
@@ -18,9 +15,7 @@ fn with_native_window(window: &gpui::Window, body: impl FnOnce(&NSWindow)) {
         return;
     };
 
-    // SAFETY: raw-window-handle defines this pointer as a live `NSView`. GPUI
-    // keeps it alive for the lifetime of the window, which outlives this call,
-    // and only gives this application access to the window on the main thread.
+    // SAFETY: GPUI keeps this AppKit view alive for the window's lifetime.
     let view = unsafe { handle.ns_view.cast::<NSView>().as_ref() };
     if let Some(native_window) = view.window() {
         body(&native_window);
@@ -40,7 +35,6 @@ pub(crate) fn detach_native_help_menu() {
     app.setHelpMenu(Some(&unused_menu));
 }
 
-/// Updates the underlying `NSWindow` because GPUI fixes its level when it opens.
 pub(super) fn set_always_on_top(window: &gpui::Window, pinned: bool) {
     with_native_window(window, |native_window| {
         let level = if pinned {

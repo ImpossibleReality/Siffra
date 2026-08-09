@@ -12,8 +12,6 @@ quantity!(
             "degs",
             "degrees"
         ),
-        // Define a full turn from degrees so it stays exactly consistent with
-        // them.
         (
             Revolution,
             &Angle::Degree.ratio() * &Float::from(360),
@@ -24,7 +22,6 @@ quantity!(
             "turn",
             "turns"
         ),
-        // 400 gradians in a full turn.
         (
             Gradian,
             &Angle::Revolution.ratio() / &Float::from(400),
@@ -50,6 +47,4 @@ quantity!(
     ]
 );
 
-// The radian is the SI unit here, so `mrad` and friends come from the prefix
-// table; degrees and their sexagesimal subdivisions are not prefixed.
 si_prefixable!(Angle, [Radian]);

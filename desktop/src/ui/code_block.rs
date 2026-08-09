@@ -1,5 +1,3 @@
-//! Selectable, syntax-highlighted calculator examples.
-
 use crate::syntax::{Token, highlight_line};
 use crate::ui::theme;
 use gpui::{

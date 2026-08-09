@@ -1,9 +1,3 @@
-//! Shared modal chrome.
-//!
-//! The caller owns visibility, dismissal, keyboard handling, and contents.
-//! Keeping those decisions outside the frame lets help, file search, and save
-//! palettes use the same shape without coupling their state machines.
-
 use crate::ui::UI_FONT;
 use crate::ui::theme;
 use gpui::{
@@ -26,7 +20,6 @@ impl ModalSize {
     }
 }
 
-/// The dimmed, window-filling layer behind a modal panel.
 pub fn overlay(id: impl Into<ElementId>) -> Stateful<Div> {
     div()
         .id(id)
@@ -44,15 +37,10 @@ pub fn overlay(id: impl Into<ElementId>) -> Stateful<Div> {
         .cursor(CursorStyle::Arrow)
 }
 
-/// The bordered and shadowed panel that contains a modal feature. It takes all
-/// the height it is allowed, which is what keeps a long list of contents from
-/// changing the frame's size as it is filtered.
 pub fn panel(id: impl Into<ElementId>, size: ModalSize) -> Stateful<Div> {
     panel_chrome(id, size).h_full()
 }
 
-/// [`panel`] for a modal that is only as tall as what it holds, up to its
-/// ceiling — a palette that starts as one row and grows.
 pub fn fitted_panel(id: impl Into<ElementId>, size: ModalSize) -> Stateful<Div> {
     panel_chrome(id, size)
 }
@@ -78,7 +66,6 @@ fn panel_chrome(id: impl Into<ElementId>, size: ModalSize) -> Stateful<Div> {
         }])
 }
 
-/// A modal title/action row.
 pub fn header() -> Div {
     div()
         .px(px(0.9 * theme::REM))
@@ -89,7 +76,6 @@ pub fn header() -> Div {
         .justify_between()
 }
 
-/// The standard compact close affordance. The caller attaches its click action.
 pub fn close_button(id: impl Into<ElementId>) -> Stateful<Div> {
     div()
         .id(id)
@@ -104,7 +90,6 @@ pub fn close_button(id: impl Into<ElementId>) -> Stateful<Div> {
         .child("✕")
 }
 
-/// The inset, flexible body used by scrolling modal contents.
 pub fn body(id: impl Into<ElementId>) -> Stateful<Div> {
     div()
         .id(id)

@@ -1,11 +1,3 @@
-//! End-to-end coverage for the unit/dimension system: every base axis and
-//! derived-unit family, exercised through the real parser + evaluator so that
-//! ratios, display shorthands, arithmetic, and axis collapse are all checked at
-//! once.
-//!
-//! Conversion (`in`/`as`) applies after `*` and `/`, so a complete product or
-//! quotient can be converted without extra parentheses.
-
 use siffra::evaluation::{SiffraState, evaluate_line};
 use siffra::representations::Value;
 
@@ -37,7 +29,6 @@ fn data_bit_byte_and_prefixes() {
     assert_eq!(one("1 MB in kB"), "1,000 kB");
     assert_eq!(one("1 KiB in bytes"), "1,024 B");
     assert_eq!(one("1 GiB in MiB"), "1,024 MiB");
-    // Decimal (SI, x1000) and binary (IEC, x1024) prefixes share the axis.
     assert_eq!(one("1 GB in MiB"), "953.67431640625 MiB");
 }
 
@@ -52,7 +43,6 @@ fn electrical_ohms_law_and_power() {
     assert_eq!(one("1000 mA in A"), "1 A");
     assert_eq!(one("2 A * 3 ohm in V"), "6 V");
     assert_eq!(one("12 V * 2 A in W"), "24 W");
-    // `C` is Celsius, so use the long form when targeting coulombs.
     assert_eq!(one("2 A * 3 s in coulombs"), "6 C");
     assert_eq!(one("100 W * 1 h in kWh"), "0.1 kWh");
 }
@@ -120,7 +110,6 @@ fn speed_shorthands() {
 
 #[test]
 fn dimensionless_scalars() {
-    // Scalar units scale a number rather than merely labelling it.
     assert_eq!(one("5000 ppm as percent"), "0.5 %");
     assert_eq!(one("100 bp as percent"), "1 %");
     assert_eq!(one("1 % in bp"), "100 bp");
@@ -135,7 +124,6 @@ fn extended_length_mass_time() {
 
 #[test]
 fn extended_angle_units() {
-    // A revolution is a full turn: 360 degrees, 400 gradians.
     assert_eq!(one("1 turn in deg"), "360 deg");
     assert_eq!(one("1 rev in deg"), "360 deg");
     assert_eq!(one("400 grad in rev"), "1 rev");
@@ -143,15 +131,12 @@ fn extended_angle_units() {
 
 #[test]
 fn rankine_absolute_temperature() {
-    // 0 C = 273.15 K = 491.67 R; measured, like Kelvin, from absolute zero.
     assert_eq!(one("0 C in R"), "491.67 °R");
     assert_eq!(one("100 C in R"), "671.67 °R");
 }
 
 #[test]
 fn arrow_converts_entire_line_without_parentheses() {
-    // `in` binds tighter than `+`, so it converts only the last term; `->`
-    // binds at the line level and converts the whole sum.
     assert_eq!(one("1 m + 3 in in cm"), "1.0762 m");
     assert_eq!(one("1 m + 3 in -> cm"), "107.62 cm");
     assert_eq!(one("(1 m + 3 in) in cm"), one("1 m + 3 in -> cm"));
@@ -188,7 +173,6 @@ fn stoichiometry() {
     let glucose = one("5 mol C6H12O6 in g");
     assert!(glucose.starts_with("900.7"), "got {glucose}");
 
-    // Brackets support compound expressions as well as a single qualified unit.
     let out = one("18 [g H2O] as [mol H2O]");
     assert!(out.starts_with("0.99") || out.starts_with("1"), "got {out}");
 }
@@ -216,7 +200,6 @@ fn derived_units_round_trip_and_compose() {
 
 #[test]
 fn torque_and_energy_do_not_collapse_into_each_other() {
-    // Equal dimensionality does not erase deliberate display units.
     assert_eq!(one("5 N * 3 m"), "15 N*m");
     assert_eq!(one("5 J"), "5 J");
     assert!(
@@ -228,7 +211,6 @@ fn torque_and_energy_do_not_collapse_into_each_other() {
 
 #[test]
 fn explicit_conversion_collapses_to_named_units() {
-    // Named collapse is explicit; bare products retain their built-up units.
     assert_eq!(one("100 kg * 9.8 m/s^2"), "980 kg*m/s^2");
     assert_eq!(one("100 kg * 9.8 m/s^2 in N"), "980 N");
     assert_eq!(one("10 W * 5 s in J"), "50 J");
@@ -236,13 +218,11 @@ fn explicit_conversion_collapses_to_named_units() {
 
 #[test]
 fn scalar_units_scale_a_bare_number() {
-    // A scalar unit converts a plain number rather than merely labelling it.
     assert_eq!(one("0.5 as percent"), "50 %");
 }
 
 #[test]
 fn absolute_temperature_converts_affinely() {
-    // Absolute temperatures use scale and offset, not just a ratio.
     assert_eq!(one("100 C in F"), "212 °F");
     assert_eq!(one("0 C in K"), "273.15 K");
     assert_eq!(one("32 F in C"), "0.0 °C");
@@ -252,7 +232,6 @@ fn absolute_temperature_converts_affinely() {
 
 #[test]
 fn absolute_temperature_decays_under_arithmetic() {
-    // Arithmetic decays absolute temperatures to linear intervals.
     assert_eq!(one("20 C + 5 C"), "25 °C");
 }
 
@@ -302,14 +281,12 @@ fn si_prefixes_accept_spelled_out_names() {
     assert_eq!(one("1 nanofarad in pF"), "1,000 pF");
     assert_eq!(one("1 nanofarads in pF"), "1,000 pF");
     assert_eq!(one("1 megaohm in kohm"), "1,000 kohm");
-    // A prefix and its unit must use the same symbol or word style.
     assert!(one("1 nanoF").starts_with("ERR"));
     assert!(one("1 nfarad").starts_with("ERR"));
 }
 
 #[test]
 fn established_names_win_over_a_prefix_reading() {
-    // Exact names win over possible prefix splits.
     assert_eq!(one("1 pc in ly"), "3.26156377716743358442662487194 ly");
     assert_eq!(one("5 min in s"), "300 s");
     assert_eq!(one("1 cal in J"), "4.184 J");
@@ -321,7 +298,6 @@ fn established_names_win_over_a_prefix_reading() {
     assert_eq!(one("1 nmi in m"), "1,852 m");
 }
 
-/// Established prefixed spellings resolve through the shared prefix table.
 #[test]
 fn removed_variants_still_parse_through_the_prefix_table() {
     let still_resolves = [
@@ -437,7 +413,6 @@ fn removed_variants_still_parse_through_the_prefix_table() {
 
 #[test]
 fn prefixed_units_expand_and_simplify() {
-    // Prefix scaling is absorbed into the magnitude during expansion.
     assert_eq!(one("expand(5 kN)"), "5,000 kg*m/s^2");
     assert_eq!(one("simplify(5000 kg*m/s^2)"), "5,000 N");
 }

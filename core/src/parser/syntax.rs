@@ -1,13 +1,3 @@
-//! Lossless, tolerant syntax analysis for editor highlighting.
-//!
-//! Evaluation deliberately requires a complete [`ParsedLine`](super::ParsedLine).
-//! Highlighting has a different contract: every character must remain usable
-//! while the user is halfway through an expression. This module therefore uses
-//! Chumsky as a lossless lexer, enriches successful parses with their semantic
-//! AST spans, and applies small context-aware recoveries for unfinished unit
-//! expressions. The fallback token consumes exactly one character, so this
-//! analysis always produces output.
-
 use super::{
     KNOWN_FUNCS, ParsedDimension, ParsedExpr, ParsedLine, ParsedUnit, Span, UNIT_EXCLUDE,
     chemical_parser, number_parser, parse_line,
@@ -18,7 +8,6 @@ use std::ops::Range;
 type LexExtra<'a> = extra::Err<Rich<'a, char>>;
 type LexParser<'a, O> = chumsky::Boxed<'a, 'a, &'a str, O, LexExtra<'a>>;
 
-/// A semantic category understood by editor themes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SyntaxKind {
     Header,
@@ -31,8 +20,6 @@ pub enum SyntaxKind {
     Operation,
 }
 
-/// One semantic syntax range. Offsets are UTF-8 byte offsets, matching Rust
-/// string slices and the desktop text renderer.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SyntaxSpan {
     pub kind: SyntaxKind,
@@ -67,8 +54,6 @@ fn lex_parser<'a>() -> impl Parser<'a, &'a str, Vec<LexToken>, LexExtra<'a>> {
         .to(LexKind::Comment)
         .boxed();
 
-    // Stop immediately before the first `*/`, but accept end-of-input as the
-    // natural recovered form of a block comment still being typed.
     let block_comment: LexParser<'a, LexKind> = just("/*")
         .then(any().and_is(just("*/").not()).repeated())
         .then(just("*/").or_not())
@@ -206,8 +191,6 @@ fn add_unit(input: &str, unit: &ParsedUnit, out: &mut Vec<SyntaxSpan>) {
     {
         out.push(syntax(SyntaxKind::Unit, start..name_end));
     } else if unit.name == "percent" && input.get(start..unit.span.end()) == Some("%") {
-        // The parser normalizes the symbolic spelling to `percent` for
-        // evaluation, but highlighting must retain its source range.
         out.push(syntax(SyntaxKind::Unit, start..unit.span.end()));
     }
 
@@ -295,9 +278,6 @@ fn chemical_prefix(input: &str, start: usize) -> Option<Range<usize>> {
             let span: SimpleSpan = e.span();
             start + span.start..start + span.end
         })
-        // `Parser::parse` requires the full input. Consume the suffix after
-        // capturing the chemical's greedy prefix so this remains a local
-        // recovery rather than a second whole-line grammar.
         .then_ignore(any().repeated())
         .parse(input.get(start..input.len())?)
         .into_output()
@@ -326,9 +306,6 @@ fn add_chemical_after_unit(
     token_covering(tokens, range.end.saturating_sub(1))
 }
 
-/// Marks a unit expression beginning at `start`. This is intentionally
-/// forgiving: missing powers, terms, or a closing bracket simply end the
-/// recovered expression rather than invalidating earlier unit names.
 fn add_tolerant_dimension(
     input: &str,
     tokens: &[LexToken],
@@ -367,8 +344,6 @@ fn add_tolerant_dimension(
                 expect_unit = false;
                 continue;
             }
-            // `1/s` is the denominator-only unit form. The one remains a
-            // numeric literal; the slash puts the scanner back in unit mode.
             if text == "1" {
                 index = current + 1;
                 expect_unit = false;
@@ -498,9 +473,6 @@ fn normalize(input: &str, spans: Vec<SyntaxSpan>) -> Vec<SyntaxSpan> {
     output
 }
 
-/// Returns semantic syntax spans even when `input` is incomplete or invalid.
-/// Successful parses provide authoritative variable, function, unit, and
-/// chemical roles; the tolerant unit pass preserves those roles while typing.
 pub fn syntax_spans(input: &str) -> Vec<SyntaxSpan> {
     let tokens = lex(input);
     let mut spans = base_spans(input, &tokens);

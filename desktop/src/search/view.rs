@@ -1,13 +1,3 @@
-//! The calculation-search palette view.
-//!
-//! It matches a query against every name and, failing that, against the lines of
-//! every calculation, so a file can be found by something it works out as well as
-//! by what it is called. The lines that matched are shown under the name, in the
-//! colours the editor gives them.
-//!
-//! The store is the workspace's; this modal is handed a list and reports what the
-//! user chose to do with it.
-
 #[cfg(test)]
 use super::matching::MAX_MATCH_LINES;
 use super::matching::{MatchLine, Row, rows_for};
@@ -27,14 +17,10 @@ use gpui::{
 
 const PANEL_WIDTH: f32 = 560.0;
 const PANEL_HEIGHT: f32 = 28.0 * theme::REM;
-/// The palette starts below whichever is larger: the minimum top inset or 12% of
-/// the viewport height.
 const OVERLAY_TOP_MIN: f32 = 3.0 * theme::REM;
 const OVERLAY_TOP_FRACTION: f32 = 0.12;
 const OVERLAY_SIDE: f32 = theme::REM;
 
-/// What the modal asks the workspace to do. Everything that touches the store
-/// happens there, so a delete comes back as a fresh list.
 pub enum SearchEvent {
     Close,
     Open(u64),
@@ -44,7 +30,6 @@ pub enum SearchEvent {
 pub struct SearchModal {
     query: Entity<SingleLineInput>,
     mono_family: SharedString,
-    /// Every saved calculation, as the workspace last read them.
     all: Vec<Document>,
     rows: Vec<Row>,
     selected: usize,
@@ -66,7 +51,6 @@ impl SearchModal {
             )
         });
         let subscription = cx.subscribe(&query, |modal, _, _: &ValueChanged, cx| {
-            // Query changes can reorder the rows, so restart at the top.
             modal.selected = 0;
             modal.rebuild_rows(cx);
         });
@@ -82,8 +66,6 @@ impl SearchModal {
         }
     }
 
-    /// Shows the modal from the top: an empty query, the newest calculation
-    /// highlighted, and the caret in the field.
     pub fn open(&mut self, documents: Vec<Document>, cx: &mut Context<Self>) {
         self.selected = 0;
         self.query.update(cx, |query, cx| {
@@ -93,8 +75,6 @@ impl SearchModal {
         self.set_documents(documents, cx);
     }
 
-    /// Replaces the list the modal is matching against, keeping the highlight on
-    /// whatever row has taken the place of the one it was on.
     pub fn set_documents(&mut self, documents: Vec<Document>, cx: &mut Context<Self>) {
         self.all = documents;
         self.rebuild_rows(cx);
@@ -103,7 +83,6 @@ impl SearchModal {
     fn rebuild_rows(&mut self, cx: &mut Context<Self>) {
         let query = self.query.read(cx).value().trim().to_string();
         self.rows = rows_for(&query, &self.all);
-        // Filtering can remove the selected row.
         self.selected = self.selected.min(self.rows.len().saturating_sub(1));
         cx.notify();
     }
@@ -147,8 +126,6 @@ impl SearchModal {
                 cx.stop_propagation();
                 self.choose(cx);
             }
-            // ⌘⌫ deletes the highlighted calculation rather than a character of
-            // the query, which is why it is taken before the field sees it.
             "backspace" if event.keystroke.modifiers.secondary() => {
                 if let Some(row) = self.rows.get(self.selected) {
                     cx.stop_propagation();
@@ -206,7 +183,6 @@ impl SearchModal {
             .children((!row.lines.is_empty()).then(|| self.render_matches(index, &row.lines)))
     }
 
-    /// Shows delete only for the highlighted row.
     fn render_delete(
         &self,
         index: usize,
@@ -227,8 +203,6 @@ impl SearchModal {
             .rounded(px(0.3 * theme::REM))
             .cursor(CursorStyle::Arrow)
             .hover(|style| style.bg(rgba(0xe06c7524)))
-            // The press is taken here so it never reads as a press on the row,
-            // which would open the calculation being deleted.
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(|_, _: &MouseDownEvent, _, cx| {
@@ -243,8 +217,6 @@ impl SearchModal {
                     .path(icon::CLOSE)
                     .size(px(0.8 * theme::REM))
                     .flex_none()
-                    // A transparent glyph hides the control without changing the
-                    // row's layout.
                     .text_color(if active {
                         rgb(0x6b7280).into()
                     } else {
@@ -254,8 +226,6 @@ impl SearchModal {
             )
     }
 
-    /// Renders matched lines as highlighted code, marking omitted lines between
-    /// non-adjacent matches.
     fn render_matches(&self, index: usize, lines: &[MatchLine]) -> impl IntoElement {
         div()
             .id(("search-matches", index))
@@ -340,9 +310,6 @@ impl Render for SearchModal {
         overlay("search-overlay")
             .items_start()
             .pt(top)
-            // Named so the query field's own ⌘⌫ can be bound out from under it:
-            // in here that keystroke deletes the highlighted calculation, and a
-            // binding resolves before any of these keys are looked at.
             .key_context("SiffraSearch")
             .capture_key_down(cx.listener(Self::handle_key_down))
             .on_mouse_down(
@@ -418,7 +385,6 @@ fn hint(keys: impl Into<SharedString>, label: &'static str) -> impl IntoElement 
         .child(label)
 }
 
-/// Marks non-empty lines omitted between matching lines.
 fn gap_marker() -> gpui::AnyElement {
     div()
         .relative()

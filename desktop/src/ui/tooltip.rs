@@ -1,5 +1,3 @@
-//! The small text tooltip shared by compact controls.
-
 use crate::ui::UI_FONT;
 use crate::ui::theme;
 use gpui::{

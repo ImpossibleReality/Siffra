@@ -1,5 +1,3 @@
-//! End-to-end checks for parser and evaluator behavior.
-
 use siffra::evaluation::{SiffraState, evaluate_line};
 use siffra::representations::Value;
 
@@ -15,8 +13,6 @@ fn display_value(val: Value) -> String {
     output
 }
 
-/// Evaluate a block of lines with shared state and return the
-/// rendered output for each line that produced a value.
 fn run(block: &str) -> Vec<String> {
     let mut state = SiffraState::new();
     let mut out = Vec::new();
@@ -48,17 +44,12 @@ fn simple_calculations() {
 
 #[test]
 fn implicit_multiplication_has_lower_precedence_than_exponentiation() {
-    // No space means an adjacent variable; a space selects the unit grammar,
-    // even when a variable shares the unit's name.
     let out = run("m = 1\n5m^2\n5 m^2");
     assert_eq!(out, vec!["1", "5", "5 m^2"]);
 
-    // Exponents bind to their adjacent term, while parentheses can opt into
-    // raising the entire product. Chained exponents remain right-associative.
     let out = run("x = 2\n2x^3\n(2x)^3\n2x^2^3\n2x^-2\n2x^2 / 4");
     assert_eq!(out, vec!["2", "16", "64", "512", "0.5", "2"]);
 
-    // Factorial binds before exponentiation and implicit multiplication.
     let out = run("x = 3\n2x!\n2(x!)^2");
     assert_eq!(out, vec!["3", "12", "72"]);
 }
@@ -126,7 +117,6 @@ fn root() {
 
 #[test]
 fn fractional_powers_do_not_hang() {
-    // Fractional powers that land on exact integers must complete promptly.
     assert_eq!(one("27 ^ (1/3)"), "3");
     assert_eq!(one("2 ^ 0.5").starts_with("1.4142").to_string(), "true");
     assert_eq!(one("8 ^ (1/3)"), "2");
@@ -160,7 +150,6 @@ fn stoichiometry() {
     let glucose = one("5 mol C6H12O6 in g");
     assert!(glucose.starts_with("900.7"), "got {glucose}");
 
-    // Brackets support compound expressions as well as a single qualified unit.
     let out = one("18 [g H2O] as [mol H2O]");
     assert!(out.starts_with("0.99") || out.starts_with("1"), "got {out}");
 }
@@ -181,7 +170,6 @@ fn conversion_target_stops_before_spaced_arithmetic() {
 
 #[test]
 fn derived_units_round_trip_and_compose() {
-    // Named units keep their display; base quotients retain built-up units.
     assert_eq!(one("60 mph"), "60 mph");
     assert_eq!(one("100 km / 2 h"), "50 km/h");
     assert_eq!(one("2 Hz"), "2 Hz");
@@ -189,7 +177,6 @@ fn derived_units_round_trip_and_compose() {
 
 #[test]
 fn torque_and_energy_do_not_collapse_into_each_other() {
-    // Equal dimensionality does not erase deliberate display units.
     assert_eq!(one("5 N * 3 m"), "15 N*m");
     assert_eq!(one("5 J"), "5 J");
     assert!(
@@ -201,7 +188,6 @@ fn torque_and_energy_do_not_collapse_into_each_other() {
 
 #[test]
 fn explicit_conversion_collapses_to_named_units() {
-    // Named collapse is explicit; bare products retain their built-up units.
     assert_eq!(one("100 kg * 9.8 m/s^2"), "980 kg*m/s^2");
     assert_eq!(one("100 kg * 9.8 m/s^2 in N"), "980 N");
     assert_eq!(one("10 W * 5 s in J"), "50 J");
@@ -209,13 +195,11 @@ fn explicit_conversion_collapses_to_named_units() {
 
 #[test]
 fn scalar_units_scale_a_bare_number() {
-    // A scalar unit converts a plain number rather than merely labelling it.
     assert_eq!(one("0.5 as percent"), "50 %");
 }
 
 #[test]
 fn absolute_temperature_converts_affinely() {
-    // Absolute temperatures use scale and offset, not just a ratio.
     assert_eq!(one("100 C in F"), "212 °F");
     assert_eq!(one("0 C in K"), "273.15 K");
     assert_eq!(one("32 F in C"), "0.0 °C");
@@ -225,7 +209,6 @@ fn absolute_temperature_converts_affinely() {
 
 #[test]
 fn absolute_temperature_decays_under_arithmetic() {
-    // Arithmetic decays absolute temperatures to linear intervals.
     assert_eq!(one("20 C + 5 C"), "25 °C");
 }
 

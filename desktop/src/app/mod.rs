@@ -1,8 +1,3 @@
-//! Application setup for Siffra, a notepad you can calculate in.
-//!
-//! The application draws an input column, a result column, and a rule tying each
-//! line to its answer.
-
 pub mod keymap;
 pub mod menus;
 
@@ -16,7 +11,6 @@ use gpui::{
     point, px, size,
 };
 
-/// Preferred monospace families, in fallback order.
 const MONO_FAMILIES: &[&str] = &[
     "Roboto Mono",
     "SF Mono",
@@ -39,21 +33,14 @@ fn key_bindings() -> Vec<KeyBinding> {
     keymap::bindings()
 }
 
-/// Starts the desktop application.
 pub fn run() {
     Application::new().with_assets(Assets).run(|cx: &mut App| {
         cx.bind_keys(key_bindings());
         menus::register_actions(cx);
-        // After the bindings, since the items take their shortcuts from them.
         cx.set_menus(menus::app_menus());
-        // And after the menus, since this takes back the ⌘? macOS would
-        // otherwise have claimed for the Help menu's search field.
         #[cfg(target_os = "macos")]
         platform::macos::detach_native_help_menu();
 
-        // Quitting is one of the moments a calculation is written, since what
-        // was typed in the last fraction of a second has not been saved yet.
-        // This covers every way out of the app, the Dock's Quit included.
         cx.on_app_quit(|cx: &mut App| {
             for window in cx.windows() {
                 if let Some(window) = window.downcast::<Workspace>() {
@@ -66,9 +53,6 @@ pub fn run() {
         })
         .detach();
 
-        // The window is the app: there is no document list or menu-bar item to
-        // go back to, so closing the last one ends the session rather than
-        // leaving a menu bar with nothing under it.
         cx.on_window_closed(|cx| {
             if cx.windows().is_empty() {
                 cx.quit();
@@ -85,13 +69,7 @@ pub fn run() {
                     window_bounds: Some(WindowBounds::Windowed(bounds)),
                     titlebar: Some(TitlebarOptions {
                         title: Some("Siffra".into()),
-                        // The window draws its own bar, so the editor's
-                        // background runs to the top edge.
                         appears_transparent: true,
-                        // Left where the platform puts them, but lifted onto the
-                        // toolbar's own centre line: the bar is a shade shorter
-                        // than the title bar macOS would have drawn, and the
-                        // buttons have to sit level with the name beside them.
                         traffic_light_position: Some(point(
                             px(theme::TRAFFIC_LIGHT_LEFT),
                             px(theme::traffic_light_top()),
@@ -121,7 +99,6 @@ mod tests {
     use super::*;
     use gpui::{KeyContext, Keymap, Keystroke};
 
-    /// The contexts a focused element sits under, outermost first.
     fn contexts(names: &[&str]) -> Vec<KeyContext> {
         names
             .iter()
@@ -133,9 +110,6 @@ mod tests {
             .collect()
     }
 
-    /// What a keystroke resolves to for something focused under `stack`, or
-    /// `None` when nothing claims it and the key is left to the views' own
-    /// handlers.
     fn action_for(keystroke: &str, stack: &[&str]) -> Option<&'static str> {
         let keymap = Keymap::new(key_bindings());
         let keystroke = Keystroke::parse(keystroke).expect("a parseable keystroke");
@@ -154,7 +128,6 @@ mod tests {
 
     #[test]
     fn neither_view_answers_for_the_other() {
-        // Lines belong to the calculation; ⇧⌘← to a field.
         assert_eq!(action_for("enter", &["SiffraInput"]), None);
         assert_eq!(action_for("shift-cmd-left", &["SiffraEditor"]), None);
         assert_eq!(
@@ -169,9 +142,6 @@ mod tests {
 
     #[test]
     fn the_search_modal_keeps_its_own_delete() {
-        // In a field ⌘⌫ clears back to the start, but in the search modal it
-        // deletes the highlighted calculation — so nothing may claim it there,
-        // or the modal's key handling would never be reached.
         assert_eq!(
             action_for("cmd-backspace", &["SiffraInput"]),
             Some("siffra::DeleteToLineStart")

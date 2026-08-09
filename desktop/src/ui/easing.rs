@@ -1,5 +1,3 @@
-//! Cubic-bezier timing functions used by the editor's animations.
-
 /// `cubic-bezier(x1, y1, x2, y2)` at `progress`, which is a fraction of the
 /// transition's duration rather than a position along the curve.
 ///

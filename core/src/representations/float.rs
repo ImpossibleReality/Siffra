@@ -36,16 +36,12 @@ impl Float {
         Self(cache.e(PRECISION, ROUNDING_MODE))
     }
 
+    // Integer powers use exact arithmetic; fractional powers use exp(y*ln(x)).
     pub fn pow(&self, other: &Self) -> Self {
-        // Integer exponents, including negatives, go through astro-float:
-        // it handles negative bases and is exact and fast for this case.
         if other.is_integer() {
             let mut cache = const_cache().lock().unwrap();
             return Self(self.0.pow(&other.0, PRECISION, ROUNDING_MODE, &mut *cache));
         }
-        // For non-integer exponents, compute `x^y = exp(y * ln x)` at fixed
-        // precision. astro-float's `pow` can become pathologically slow when a
-        // result is a near-exact integer such as `27^(1/3) = 3`.
         let ln_x = self.ln();
         let product = other * &ln_x;
         product.exp()
@@ -103,7 +99,6 @@ impl Float {
         Self(self.0.atan(PRECISION, ROUNDING_MODE, &mut *cache))
     }
 
-    /// Four-quadrant inverse tangent. Returns `None` when both inputs are zero.
     pub fn atan2(&self, x: &Self) -> Option<Self> {
         let zero = Float::from(0);
         let angle = if x > &zero {
@@ -166,11 +161,6 @@ impl Float {
         }
     }
 
-    /// Rounds to a fixed number of decimal places.
-    ///
-    /// Astro-float works in binary, so inexact transcendental results can leave
-    /// tiny artifacts such as `sin(2pi) = 2E-77`. Scaling by a decimal power
-    /// before rounding gives the calculator a predictable decimal boundary.
     pub fn round_decimal_places(&self, places: i32) -> Self {
         let scale = Float::parse(&format!("1E{places}")).expect("valid decimal scale");
         let scaled = self * &scale;
@@ -193,8 +183,6 @@ impl Float {
         }
     }
 
-    /// Rounds to a number of significant decimal digits, preserving the scale
-    /// of very small and very large values.
     pub fn round_significant_digits(&self, digits: usize) -> Self {
         if digits == 0 || self == &Float::from(0) || self.0.exponent().is_none() {
             return self.clone();
@@ -216,12 +204,10 @@ impl Float {
         self.round_decimal_places(digits as i32 - 1 - decimal_exponent)
     }
 
-    /// Applies the calculator's standard rounding for inexact functions.
     pub fn round_inexact(&self) -> Self {
         self.round_significant_digits(INEXACT_SIGNIFICANT_DIGITS)
     }
 
-    /// Returns true if this value is a non-negative integer.
     pub fn is_nonneg_integer(&self) -> bool {
         matches!(
             self.partial_cmp(&Float::from(0.0)),
@@ -229,13 +215,11 @@ impl Float {
         ) && self.is_integer()
     }
 
-    /// The gamma function, computed with the Lanczos approximation (g = 7).
-    /// `factorial(n) == gamma(n + 1)`.
     pub fn gamma(&self) -> Self {
         let half = Float::from(0.5);
         let one = Float::from(1.0);
 
-        // Reflection formula for x < 0.5: Γ(x) = π / (sin(πx) · Γ(1 - x))
+        // Reflection handles arguments below one half.
         if matches!(self.partial_cmp(&half), Some(std::cmp::Ordering::Less)) {
             let pi = Float::pi();
             let sin_pi_x = (&pi * self).sin();
@@ -243,7 +227,6 @@ impl Float {
             return &pi / &(&sin_pi_x * &gamma_1_minus);
         }
 
-        // Lanczos coefficients (g = 7, n = 9).
         const C: [f64; 9] = [
             0.999_999_999_999_809_93,
             676.520_368_121_885_1,
@@ -323,9 +306,6 @@ impl Display for Float {
             mantissa.remove(0);
         }
 
-        // Rounding a mantissa made entirely of nines can collapse it to only
-        // one or two digits. Restore the working width before inserting the
-        // decimal point below.
         while mantissa.len() < 30 {
             mantissa.push('0');
         }

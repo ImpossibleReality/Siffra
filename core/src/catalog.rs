@@ -1,14 +1,5 @@
-//! A machine-readable catalog of callable functions, named constants, and units
+//! A global catalog of callable functions, named constants, and units
 //! with their aliases.
-//!
-//! This is the single source of truth behind the desktop app's help modal. The
-//! units are enumerated directly from the enums the parser resolves against,
-//! so a new unit appears in help automatically. Functions and constants are
-//! hand-described here because the evaluator has no descriptions of its own;
-//! keep them in step with [`crate::evaluation`].
-//!
-//! The desktop build serializes this to `catalog.generated.json` via the
-//! `dump_catalog` example; see `core/examples/dump_catalog.rs`.
 
 use serde::Serialize;
 
@@ -22,23 +13,16 @@ pub struct Catalog {
     pub functions: Vec<CatalogFunction>,
     pub constants: Vec<CatalogConstant>,
     pub units: Vec<CatalogUnit>,
-    /// The SI prefixes, listed once rather than repeated across every unit
-    /// that accepts them (see [`CatalogUnit::si_prefixes`]).
     pub prefixes: Vec<CatalogPrefix>,
 }
 
-/// One SI prefix, for the help modal's prefix table.
 #[derive(Serialize)]
 pub struct CatalogPrefix {
-    /// Symbol form, written on a unit's symbol (`n` in `nF`).
     pub symbol: String,
-    /// Spelled-out form, written on a unit's spelled-out name (`nanofarad`).
     pub name: String,
-    /// The power of ten, e.g. `-9`.
     pub exponent: i32,
 }
 
-/// A single `input => result` line, rendered as a mini-editor example.
 #[derive(Serialize)]
 pub struct CatalogExample {
     pub input: String,
@@ -47,14 +31,10 @@ pub struct CatalogExample {
 
 #[derive(Serialize)]
 pub struct CatalogFunction {
-    /// The section this function is grouped under in the help modal.
     pub category: String,
-    /// Callable name, e.g. `sqrt`.
     pub name: String,
-    /// Human-readable call shape, e.g. `sqrt(x)`.
     pub signature: String,
     pub description: String,
-    /// Worked examples shown as a code block.
     pub examples: Vec<CatalogExample>,
 }
 
@@ -62,23 +42,15 @@ pub struct CatalogFunction {
 pub struct CatalogConstant {
     pub name: String,
     pub description: String,
-    /// Worked examples shown as a code block.
     pub examples: Vec<CatalogExample>,
 }
 
 #[derive(Serialize)]
 pub struct CatalogUnit {
-    /// The section this unit is grouped under in the help modal.
     pub category: String,
-    /// Primary spelled-out name (e.g. `kilometer`).
     pub name: String,
-    /// Canonical short symbol (e.g. `km`).
     pub symbol: String,
-    /// Every other name this unit parses from, for fuzzy search.
     pub aliases: Vec<String>,
-    /// Whether any SI prefix may be written on this unit (`nF`, `nanofarad`),
-    /// beyond whatever prefixed spellings are listed as units in their own
-    /// right.
     pub si_prefixes: bool,
 }
 
@@ -483,7 +455,6 @@ fn constants() -> Vec<CatalogConstant> {
 fn units() -> Vec<CatalogUnit> {
     let mut units = Vec::new();
 
-    // Keep the bare scalar first so it heads the units tab.
     {
         let symbol = "#";
         let name = "number";
@@ -592,14 +563,10 @@ fn units() -> Vec<CatalogUnit> {
     units
 }
 
-/// Mirrors the parser's prefix declarations so the catalog and resolver stay
-/// aligned.
 fn takes_si_prefixes<T: SiPrefixable + PartialEq>(unit: &T) -> bool {
     T::PREFIXABLE.contains(unit)
 }
 
-/// Assembles a [`CatalogUnit`], dropping any alias that merely repeats the
-/// symbol or the spelled-out name.
 fn make_unit(
     category: &str,
     symbol: &str,
@@ -622,8 +589,6 @@ fn make_unit(
     }
 }
 
-/// The help-modal category for each named derived unit. Grouped by the physical
-/// quantity it measures rather than by its raw dimensionality.
 fn derived_category(unit: &DerivedUnit) -> &'static str {
     use DerivedUnit::*;
     match unit {

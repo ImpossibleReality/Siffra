@@ -1,6 +1,3 @@
-//! Shared colours and measurements for the application and its controls. Values that
-//! use `rem` are resolved against the window's base size.
-
 use gpui::{Hsla, Pixels, Rgba, px, rgb, rgba};
 
 pub const REM: f32 = 15.0;

@@ -1,9 +1,4 @@
-//! Fitting a result to the width the output column has for it.
-//!
-//! Full-precision values are shown as recurring decimals when possible;
-//! otherwise they are rounded to the most precise form that fits, without
-//! discarding integer digits or units.
-
+/// Number text split around an optional repeating suffix.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct NumberDisplay {
     pub before_repeat: String,
@@ -20,7 +15,6 @@ impl NumberDisplay {
         }
     }
 
-    /// The character count the output column has to find room for.
     #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         self.before_repeat.chars().count()
@@ -29,11 +23,9 @@ impl NumberDisplay {
     }
 }
 
-/// A recurring suffix shorter than this reads as coincidence rather than as a
-/// repetend, so it is left alone.
+// Ignore short suffixes to avoid false repeats.
 const MIN_REPEATING_DIGITS: usize = 12;
 
-/// The parsed sign, grouped integer, fraction, exponent, and unit suffix.
 struct Parts<'a> {
     sign: &'a str,
     integer: &'a str,
@@ -102,9 +94,7 @@ fn parse(value: &str) -> Option<Parts<'_>> {
     })
 }
 
-/// Finds a recurring decimal suffix with a period of one, two, or three digits.
-/// Requiring a long suffix keeps ordinary values that happen to end in a few
-/// equal digits from being written as recurring ones.
+/// Splits a long repeating decimal into prefix, repetend, and suffix.
 pub fn format_repeating_decimal(value: &str) -> Option<NumberDisplay> {
     let parts = parse(value)?;
     let fraction = parts.fraction.unwrap_or("");
@@ -169,8 +159,6 @@ fn increment(digits: &str) -> String {
     carried
 }
 
-/// Rounds `value` to `places` decimals, half away from zero, keeping its sign,
-/// exponent and unit. Returns `value` unchanged when it is already that short.
 fn round_to_decimal_places(value: &str, places: usize) -> Option<String> {
     let parts = parse(value)?;
     let fraction = parts.fraction?;
@@ -216,8 +204,7 @@ fn round_to_decimal_places(value: &str, places: usize) -> Option<String> {
     ))
 }
 
-/// The most precise representation of `value` that fits `max_characters` of the
-/// monospaced column.
+/// Formats `value` to fit the output character budget.
 pub fn format_number_for_characters(
     value: &str,
     max_characters: usize,
@@ -246,8 +233,7 @@ pub fn format_number_for_characters(
         }
     }
 
-    // Integer digits and units are never discarded. The column clips whatever is
-    // left over when it is too narrow even for that.
+    // Keep integer and unit text intact; clip only if unavoidable.
     NumberDisplay::plain(round_to_decimal_places(value, 0).unwrap_or_else(|| value.to_string()))
 }
 

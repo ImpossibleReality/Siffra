@@ -1,6 +1,5 @@
 use crate::{quantity, ratio, si_prefixable};
 
-// Prefixes such as `mmol`, `kmol`, and `umol` come from the SI prefix table.
 quantity!(
     Amount,
     [
@@ -24,6 +23,4 @@ quantity!(
     ]
 );
 
-// The "gram mole" spellings take a symbol prefix directly (`kgmol`, `mgmol`),
-// the way chemical engineering writes them.
 si_prefixable!(Amount, [Mole ["gmol", "gmole", "gmoles"]]);

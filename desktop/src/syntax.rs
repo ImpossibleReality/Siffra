@@ -1,5 +1,3 @@
-//! Application adapter for the parser-owned semantic syntax analysis.
-
 use std::ops::Range;
 
 pub use siffra::parser::SyntaxKind as Token;
@@ -11,13 +9,10 @@ pub struct Span {
     pub range: Range<usize>,
 }
 
-/// Whether `line` is a heading — a line introduced by one or more `#`.
 pub fn is_header_line(line: &str) -> bool {
     line.trim_start().starts_with('#')
 }
 
-/// Semantic syntax spans for a line, including useful partial output when the
-/// expression is unfinished or invalid.
 pub fn highlight_line(text: &str) -> Vec<Span> {
     syntax_spans(text)
         .into_iter()

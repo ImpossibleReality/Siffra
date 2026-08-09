@@ -1,7 +1,5 @@
 use crate::{quantity, ratio};
 
-// A byte is 8 bits. Decimal prefixes use powers of 1000; binary prefixes use
-// powers of 1024. Both live on the same axis, so `1 GB in MiB` converts.
 quantity!(
     Data,
     [

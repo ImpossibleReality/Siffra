@@ -5,26 +5,7 @@ use crate::representations::dimension::{
 use crate::{ratio, si_prefixable};
 use std::str::FromStr;
 
-/// A named *derived* unit: a single token (`N`, `mph`, `%`, `kWh`, `V`) that
-/// stands for a dimensionless scalar times a product of base units.
-///
-/// The whole point of storing it as its own term — rather than eagerly
-/// expanding it into base units — is *display*: `N·m` (torque) and `J`
-/// (energy) share a dimensionality but must render differently, so the named
-/// unit must be retained.
-///
-/// Both the [`Dimensionality`] and the canonical conversion factor are computed
-/// from [`DerivedUnit::expansion`] and [`DerivedUnit::scalar`], so a derived
-/// unit stays synchronized with the base units it is built from.
-///
-/// The table below is the single source of truth. Each entry lists the display
-/// `short`/`long` names, extra parse `aka` aliases, the dimensionless `scalar`,
-/// and the `base` expansion (base [`Quantity`]s with integer powers).
-///
-/// The conversion factor is `scalar * Π base_i.ratio ^ power_i`, expressed in
-/// canonical base units (g, m, s, mol, rad, K, A, bit). So a unit that is a
-/// messy multiple of base units — a liter, a calorie, or a psi — is just a
-/// scalar on a clean base expansion.
+// Named units retain their display form while exposing base expansion/factors.
 macro_rules! derived_units {
     ($( $variant:ident {
         short: $short:expr,
@@ -39,23 +20,15 @@ macro_rules! derived_units {
         }
 
         impl DerivedUnit {
-            /// Every named derived unit. Backs name resolution and the
-            /// reverse-lookup index
-            /// ([`crate::representations::Dimension::named_equivalents`]).
             pub const ALL: &'static [DerivedUnit] = &[ $(DerivedUnit::$variant),* ];
 
-            /// The product of base [`Quantity`]s this unit expands to, with
-            /// integer powers. Empty for pure scalars such as `percent` or
-            /// `ppm`.
+            /// Base-unit expansion of this named unit.
             pub fn expansion(&self) -> Vec<(Quantity, i32)> {
                 match self {
                     $( DerivedUnit::$variant => vec![ $( ($q, $p) ),* ] ),*
                 }
             }
 
-            /// The dimensionless multiplier folded into the conversion factor:
-            /// `1` for a clean SI-derived unit (N, J, V), a fraction for `%`,
-            /// or a messy constant for a liter / calorie / psi.
             fn scalar(&self) -> Float {
                 match self {
                     $( DerivedUnit::$variant => $scalar ),*
@@ -74,7 +47,6 @@ macro_rules! derived_units {
                 }
             }
 
-            /// All names this unit parses from, including extra aliases.
             pub fn aliases(&self) -> Vec<&'static str> {
                 match self {
                     $( DerivedUnit::$variant => vec![$short, $long, $($aka),*] ),*
@@ -212,9 +184,6 @@ derived_units! {
     BasisPoint { short: "bp", long: "basis point", aka: ["bips", "basispoint", "basispoints"], scalar: ratio!(1 / 10_000), base: [] },
 }
 
-// Prefixes apply to coherent SI-derived units and to the conventional forms
-// `bar`, `L`, `are`, `Wh`, and `eV`. They do not apply to imperial, speed, or
-// scalar units where the notation would be misleading.
 si_prefixable!(
     DerivedUnit,
     [
@@ -240,7 +209,6 @@ si_prefixable!(
 );
 
 impl DerivedUnit {
-    /// The physical dimensionality (base-axis exponents) of this unit.
     pub fn dimensionality(&self) -> Dimensionality {
         let mut dim = Dimensionality::default();
         for (quantity, power) in self.expansion() {
@@ -249,8 +217,6 @@ impl DerivedUnit {
         dim
     }
 
-    /// The conversion factor to canonical base units (g, m, s, mol, rad, K, A,
-    /// bit): one of this unit equals `factor()` canonical units.
     pub fn factor(&self) -> Float {
         let mut factor = self.scalar();
         for (quantity, power) in self.expansion() {
@@ -260,11 +226,7 @@ impl DerivedUnit {
     }
 
     /// Whether this is the *canonical* named unit for its dimensionality: a
-    /// unit whose scalar is exactly 1 (N, J, W, Pa, Hz, V, …), rather than a
-    /// scaled or imperial variant (kN, kWh, psi). Only canonical units are
-    /// considered as targets for an automatic named collapse, so
-    /// `kg*m/s^2` prefers `N` rather than being drowned out by `kN`, `dyn`,
-    /// `lbf`, or `kgf`.
+    /// unit whose scalar is exactly 1 (N, J, W, Pa, Hz, V, …). These are automatically considered as targets for automatic name collapse.
     pub fn is_named_canonical(&self) -> bool {
         self.scalar() == Float::from(1)
     }

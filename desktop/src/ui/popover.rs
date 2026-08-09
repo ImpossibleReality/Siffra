@@ -1,12 +1,3 @@
-//! A panel that hangs off whatever opened it.
-//!
-//! Only the chrome lives here — the frame, the padding and the type it sets its
-//! contents in. What goes inside is the caller's, and so is deciding when it is
-//! open; a popover is a shape, not a thing that owns state.
-//!
-//! Placing one is the caller's too, because the thing it hangs off is generally
-//! drawn somewhere this element cannot see.
-
 use crate::ui::theme;
 use gpui::{
     BoxShadow, CursorStyle, Div, ElementId, FontWeight, InteractiveElement, ParentElement, Pixels,

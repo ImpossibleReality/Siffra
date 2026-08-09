@@ -6,14 +6,11 @@ use crate::representations::{Expression, Float, PercentageOperator, Value};
 use crate::siffra_try;
 use std::ops::Neg;
 
-/// Parser-level aliases for the unscaled, unitless scalar dimension.
 pub const SCALAR_UNIT_ALIASES: &[&str] = &["unitless", "number", "scalar", "#"];
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ParsedLine {
     Comment,
-    /// A `#`-prefixed title line. Carries the title with the marker and
-    /// surrounding whitespace stripped.
     Header(String),
     Expression(ParsedExpr),
     Variable(String, ParsedExpr),

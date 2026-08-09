@@ -23,7 +23,6 @@ const MAX_COMPOUNDS_PER_YEAR: i32 = 1_000_000;
 const MAX_INTEGER_FUNCTION_INPUT: i32 = 1_000_000;
 const MAX_COMBINATORIC_INPUT: i32 = 1_000;
 
-/// Converts a small, bounded integer-valued float without losing precision.
 fn bounded_integer(value: &Float, min: i32, max: i32) -> Option<i32> {
     if !value.is_integer() {
         return None;
@@ -55,9 +54,7 @@ fn value_unit(value: &Value) -> String {
     unit_label(&value.dimension())
 }
 
-/// Unitless trig arguments are interpreted as radians for calculator
-/// compatibility. Physical angles are explicitly converted; every other
-/// dimension is rejected.
+// Unitless angles are radians; physical angles are converted explicitly.
 fn trig_radians(
     value: &Value,
     function: &str,
@@ -101,8 +98,7 @@ fn radian_value(value: Float) -> Value {
     Value::new(value, Some(radians_dimension()))
 }
 
-/// Removes precision-floor artifacts at exact trig landmarks without erasing
-/// genuinely tiny inputs such as `sin(1e-60)`.
+// Remove precision noise at exact trig landmarks without erasing tiny inputs.
 fn round_trig(value: Float, radians: &Float) -> Float {
     let epsilon = Float::parse("1E-50").expect("valid epsilon");
     if value.abs() < epsilon && radians.abs() >= epsilon {
@@ -117,8 +113,6 @@ fn round_trig(value: Float, radians: &Float) -> Float {
     value.round_inexact()
 }
 
-/// Converts all values to the first value's unit and returns raw comparable
-/// numbers.
 fn values_in_first_unit(
     args: &[Value],
     function: &str,
@@ -144,7 +138,6 @@ fn values_in_first_unit(
     Ok((target, values))
 }
 
-/// Converts a percentage or bare decimal rate to its unitless decimal value.
 fn decimal_rate(
     value: &Value,
     label: &str,
@@ -226,7 +219,6 @@ fn physical_constant(value: &str, terms: Vec<(Unit, i32)>) -> Value {
     )
 }
 
-/// Computes `x!` for a non-negative integer `x` as an exact product.
 fn factorial_exact(x: &Float) -> Float {
     let one = Float::from(1.0);
     let mut result = one.clone();
@@ -300,8 +292,6 @@ fn relative_percentage(
 pub fn evaluate_line(line: &str, state: &mut SiffraState) -> EvaluationResult {
     let parsed_line = parse_line(line)?;
     match parsed_line {
-        // Headers name the document; like comments they separate blocks and
-        // produce no result of their own.
         ParsedLine::Comment | ParsedLine::Header(_) => {
             state.clear_block_total();
             Ok(None)
@@ -358,10 +348,7 @@ pub fn evaluate_expr(
         InnerExpression::Convert(val, dim) => {
             let val = evaluate_expr(val, state)?;
             if dim.is_unitless() {
-                // Named scalar units carry a scale factor. Converting them to
-                // `scalar`/`unitless` must consume that factor (`5% -> 0.05`).
-                // Physical units retain the long-standing explicit-strip
-                // behavior.
+                // Scalar conversions consume their factor; physical units only relabel.
                 if val.dimension().dimensionality().is_empty() {
                     return Ok(val
                         .convert(&Dimension::default())
@@ -369,9 +356,7 @@ pub fn evaluate_expr(
                 }
                 return Ok(val.with_units(Dimension::default()));
             } else if val.dimension().is_unitless() {
-                // Source is a bare number. If the target is a *scalar* unit
-                // (terms but no physical dimensionality, e.g. `%`), scale into
-                // it; otherwise just label the number (`5 as kg`).
+                // Bare values scale into scalar targets and otherwise only gain units.
                 if dim.dimensionality().is_empty() {
                     return Ok(val
                         .convert(dim)
@@ -985,8 +970,6 @@ pub fn evaluate_expr(
                                 expr.span()
                             ));
                         }
-                        // Use an exact product for small non-negative integers;
-                        // use gamma otherwise.
                         let result = if x.is_nonneg_integer() {
                             factorial_exact(&x)
                         } else {

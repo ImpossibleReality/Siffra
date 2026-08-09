@@ -1,12 +1,9 @@
 //! Regression guard: no siffra unit may drift far from the `units(1)` reference.
 //!
 //! Runs the full sweep and fails on any *gross* disagreement (beyond
-//! [`conformance::NEAR_TOL`]). Small, sub-tolerance differences — which calorie,
-//! decimal vs. binary kilobyte — are reference-convention nuances, reported by
-//! `cargo run -p conformance` but not treated as test failures here.
+//! [`conformance::NEAR_TOL`]).
 //!
-//! Skips cleanly (rather than failing) when `units` is not installed, so it does
-//! not break builds on machines without the reference tool.
+//! Skips cleanly (rather than failing) when `units` is not installed
 
 use conformance::{Status, cases, is_prefixed_case, reference_available, run_all, run_case};
 
@@ -40,10 +37,6 @@ fn every_unit_agrees_with_reference() {
                 "  {} ({}): siffra {siffra} vs ref {reference} — rel err {rel_err:.3e} (via {matched})",
                 outcome.symbol, outcome.name
             )),
-            // A unit the reference cannot name at all is a coverage hole — except
-            // for the generated SI-prefixed spellings, where which prefixed
-            // forms the reference accepts is its own business and varies by
-            // version. Those are still held to the mismatch check above.
             Status::NoReference { tried, .. } if !is_prefixed_case(&outcome.category) => failures
                 .push(format!(
                     "  {} ({}): reference knows none of {}",

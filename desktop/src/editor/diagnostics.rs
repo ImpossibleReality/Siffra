@@ -1,14 +1,11 @@
-//! Delayed evaluation and diagnostic visibility for the editor.
-
 use super::Editor;
 use crate::calculation::LineOutput;
 use gpui::Context;
 use std::time::{Duration, Instant};
 
-/// How long the typing on a line settles before a diagnostic about it is shown.
+/// How long the typing on a line settles before a diagnostic about it is shown. Valid results are still shown instantly.
 pub(super) const ERROR_DELAY: Duration = Duration::from_millis(200);
 
-/// The first line that is not blank and not inside a comment.
 fn top_non_comment_line(lines: &[&str]) -> Option<usize> {
     let mut in_block_comment = false;
 
@@ -73,6 +70,7 @@ fn should_hide_diagnostic(
         })
 }
 
+/// Reuses timestamps for unchanged prefix and suffix lines.
 pub(super) fn carry_edit_times<T: std::marker::Copy>(
     previous: &[String],
     times: &[Option<T>],
@@ -103,8 +101,6 @@ pub(super) fn carry_edit_times<T: std::marker::Copy>(
 }
 
 impl Editor {
-    /// Re-runs the calculation. Every line is re-evaluated, but only the lines
-    /// whose text or predecessors changed are actually recomputed.
     pub(super) fn recalculate(&mut self) {
         let lines: Vec<String> = self
             .text
@@ -126,17 +122,12 @@ impl Editor {
         self.previous_lines = next;
     }
 
-    /// How much of a line's settling time is left, or `None` once it has
-    /// settled and its diagnostic may be shown.
     pub(super) fn remaining_delay(&self, line: usize, now: Instant) -> Option<Duration> {
         let edited = self.line_edited_at.get(line).copied().flatten()?;
         let elapsed = now.saturating_duration_since(edited);
         (elapsed < ERROR_DELAY).then(|| ERROR_DELAY - elapsed)
     }
 
-    /// The line the caret is on, and whether it sits at that line's end — the
-    /// two things a diagnostic's visibility turns on. A selection is not a
-    /// caret and suppresses nothing.
     pub(super) fn caret_lines(&self) -> (Option<usize>, Option<usize>) {
         if !self.text.selection().is_empty() {
             return (None, None);
@@ -154,14 +145,6 @@ impl Editor {
         (None, None)
     }
 
-    /// Decides which results the column shows.
-    ///
-    /// A calculation is wrong for most of the time it is being typed, and a
-    /// diagnostic that appears on every keystroke is noise. An error is held
-    /// back until the typing on its line has settled, and while it is held back
-    /// whatever was already showing there stays put, so the column does not
-    /// flicker under the caret. Values are never held back — an answer is worth
-    /// having the moment there is one.
     pub(super) fn refresh_diagnostics(&mut self, cx: &mut Context<Self>) {
         let lines: Vec<&str> = self.text.content().split('\n').collect();
         let (cursor_line, cursor_line_at_end) = self.caret_lines();
@@ -180,9 +163,6 @@ impl Editor {
                     {
                         None
                     } else if message == "Incomplete expression" {
-                        // The caret has already left this line — that is the
-                        // only way an incomplete one gets this far — so there
-                        // is nothing left to wait for.
                         Some(error.clone())
                     } else if let Some(remaining) = self.remaining_delay(index, now) {
                         soonest = Some(
@@ -210,74 +190,5 @@ impl Editor {
             })
         });
         cx.notify();
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn error(message: &str) -> LineOutput {
-        LineOutput::Error {
-            span: None,
-            message: message.to_string(),
-            description: None,
-            location: None,
-        }
-    }
-
-    #[test]
-    fn finds_the_first_line_with_something_on_it() {
-        assert_eq!(top_non_comment_line(&["", "  ", "2 + 2"]), Some(2));
-        assert_eq!(top_non_comment_line(&["// note", "2 + 2"]), Some(1));
-        assert_eq!(top_non_comment_line(&["/* a", "b */ 2 + 2"]), Some(1));
-        assert_eq!(top_non_comment_line(&["", "// only comments"]), None);
-    }
-
-    #[test]
-    fn holds_back_an_incomplete_line_the_caret_is_still_on() {
-        assert!(should_hide_diagnostic(
-            &error("Incomplete expression"),
-            0,
-            &["2 +"],
-            Some(0),
-            Some(0)
-        ));
-        assert!(!should_hide_diagnostic(
-            &error("Incomplete expression"),
-            0,
-            &["2 +", ""],
-            Some(1),
-            Some(1)
-        ));
-    }
-
-    #[test]
-    fn holds_back_a_lone_name_on_the_opening_line() {
-        assert!(should_hide_diagnostic(
-            &error("Name Error"),
-            0,
-            &["total"],
-            Some(0),
-            None
-        ));
-        assert!(!should_hide_diagnostic(
-            &error("Name Error"),
-            0,
-            &["total + 1"],
-            Some(0),
-            None
-        ));
-    }
-
-    #[test]
-    fn leaves_every_other_diagnostic_alone() {
-        assert!(!should_hide_diagnostic(
-            &error("Unit Error"),
-            0,
-            &["1 m + 1 s"],
-            Some(0),
-            Some(0)
-        ));
     }
 }

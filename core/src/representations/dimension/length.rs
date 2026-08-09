@@ -1,6 +1,5 @@
 use crate::{quantity, ratio, si_prefixable};
 
-// Decimal multiples of the meter resolve from the SI prefix table.
 quantity!(
     Length,
     [

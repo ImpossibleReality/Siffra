@@ -1,11 +1,9 @@
 use crate::{quantity, ratio, si_prefixable};
 
-// SI prefixes attach to the gram, so scaled grams come from the prefix table.
 quantity!(
     Mass,
     [
         (Gram, ratio!(1 / 1), "g", "gram", "grams"),
-        // Derived expansions use kilograms, so it remains an entry of its own.
         (Kilogram, ratio!(1_000 / 1), "kg", "kilogram", "kilograms"),
         (Tonne, ratio!(1_000_000 / 1), "t", "tonne", "tonnes"),
         (
@@ -17,9 +15,7 @@ quantity!(
         ),
         (Pound, ratio!(45359237 / 100000), "lb", "pound", "pounds"),
         (Stone, ratio!(635_029_318 / 100000), "st", "stone", "stones"),
-        // A short ton is 2,000 pounds.
         (Ton, ratio!(90_718_474_000 / 100000), "tn", "ton", "tons"),
-        // An imperial ton is 2,240 pounds.
         (
             LongTon,
             ratio!(101_604_690_880 / 100000),
@@ -70,7 +66,6 @@ quantity!(
             "troy pound",
             "troy pounds"
         ),
-        // Measured, not defined: CODATA 2022 recommends 1.66053906892(52)e-27 kg.
         (
             Dalton,
             Float::parse("1.66053906892e-24").unwrap(),
@@ -83,6 +78,4 @@ quantity!(
     ]
 );
 
-// The tonne is prefixed too, because `kt` / `Mt` / `Gt` is how large masses are
-// actually written.
 si_prefixable!(Mass, [Gram, Tonne]);

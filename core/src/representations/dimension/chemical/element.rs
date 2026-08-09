@@ -1,10 +1,6 @@
 use crate::representations::Float;
 use periodic_table_on_an_enum::Element as PElement;
 
-// Decimal strings avoid the f32 truncation in `periodic-table-on-an-enum`.
-// Stable-element values follow the IUPAC 2007 conventional atomic-weight
-// table (the convention used by common molar-mass references); bracketed
-// radioactive values are representative mass numbers.
 const ATOMIC_MASSES: [&str; 118] = [
     "1.00794",
     "4.002602",
@@ -133,10 +129,6 @@ pub struct Element {
 
 impl Element {
     pub fn from_symbol(sym: &str) -> Option<Element> {
-        // `periodic-table-on-an-enum` binary-searches its symbol table with
-        // unsigned bounds, so `r = m - 1` underflows for any term sorting
-        // before the first entry ("Ac"). Reject anything that is not shaped
-        // like a symbol before handing the string over.
         let mut chars = sym.chars();
         if !matches!(chars.next(), Some(c) if c.is_ascii_uppercase()) {
             return None;

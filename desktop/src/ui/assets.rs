@@ -1,8 +1,3 @@
-//! Embedded glyphs for the application's controls.
-//!
-//! The SVGs are embedded because GPUI's SVG element needs file-backed assets.
-//! GPUI uses only their alpha as a mask and supplies the visible colour.
-
 use gpui::{AssetSource, Result, SharedString};
 use std::borrow::Cow;
 

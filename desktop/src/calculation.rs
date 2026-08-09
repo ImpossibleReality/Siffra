@@ -1,8 +1,3 @@
-//! Turning a calculation's text into one result per line.
-//!
-//! Each line is cached against itself and every line above it, because a line's
-//! value depends on the state those lines left behind.
-
 use siffra::evaluation::{SiffraState, evaluate_line};
 use siffra::parser::{ParsedDimension, ParsedExpr, ParsedLine, parse_line};
 use siffra::representations::{Currency, Dimension, Float, Unit, Value};
@@ -32,16 +27,12 @@ struct CachedLine {
     state_after: SiffraState,
 }
 
-/// Results for lines that produced one, indexed by line number. Lines that
-/// evaluate to nothing — blanks, comments, headings — are simply absent.
 #[derive(Default)]
 pub struct Calculation {
     lines: HashMap<u64, CachedLine>,
 }
 
 impl Calculation {
-    /// Evaluates every line of `input`, reusing the results of lines that have
-    /// not changed and whose predecessors have not changed either.
     pub fn evaluate(&mut self, input: &str) -> Vec<Option<LineOutput>> {
         let mut state = SiffraState::new();
         let mut outputs = Vec::new();
@@ -152,9 +143,6 @@ fn has_short_repeating_decimal(value: &str) -> bool {
     false
 }
 
-/// Collects currencies from a parsed dimension. Comments and incomplete
-/// expressions are intentionally ignored: only currencies that are part of a
-/// valid calculation affect the file's display convention.
 fn collect_dimension_currencies(dimension: &ParsedDimension, currencies: &mut BTreeSet<String>) {
     for (unit, _) in dimension.numerator.iter().chain(&dimension.denominator) {
         if let Ok(currency) = Currency::from_str(&unit.name) {
@@ -193,8 +181,6 @@ fn collect_expression_currencies(expression: &ParsedExpr, currencies: &mut BTree
     }
 }
 
-/// Currency symbols are only unambiguous when a file uses at most one distinct
-/// currency. Each currency decides whether it has a compact symbol.
 fn input_uses_currency_shorthands(input: &str) -> bool {
     let mut currencies = BTreeSet::new();
 
@@ -210,10 +196,6 @@ fn input_uses_currency_shorthands(input: &str) -> bool {
     currencies.len() <= 1
 }
 
-/// Removes a single currency numerator term from a dimension. The remaining
-/// expression is appended to its prefix symbol (for example, `USD/h` becomes
-/// `$10/h`). Powers other than one keep their ISO rendering, since currency
-/// symbols do not have a useful powered form.
 fn currency_shorthand_and_remainder(dimension: &Dimension) -> Option<(&'static str, String)> {
     let mut currency_count = 0;
     let mut shorthand = None;

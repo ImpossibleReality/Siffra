@@ -52,8 +52,6 @@ pub fn parse_compound(formula: &str) -> Option<Compound> {
         }
     }
 
-    // Every group must have been closed; otherwise the groups still on the
-    // stack would be silently dropped ("Ca(OH" would parse as "OH").
     if stack.len() != 1 {
         return None;
     }

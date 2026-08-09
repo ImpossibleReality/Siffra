@@ -1,7 +1,5 @@
 use crate::{quantity, ratio, si_prefixable};
 
-// Sub-second scales come from the SI prefix table. Larger units stay unprefixed
-// so names such as `d`, `h`, and `y` remain unambiguous.
 quantity!(
     Time,
     [
@@ -45,6 +43,4 @@ quantity!(
     ]
 );
 
-// `sec` is an abbreviation rather than a spelled-out name, so a *symbol* prefix
-// may sit on it: `msec` and `usec` read like `ms` and `us`.
 si_prefixable!(Time, [Second ["sec", "secs"]]);

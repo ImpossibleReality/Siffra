@@ -1,16 +1,4 @@
-//! The application menu bar and the commands that exist only because a menu bar
-//! has to offer them.
-//!
-//! Nothing here does the work itself: every item dispatches an action that some
-//! other part of the app already handles, so the menu is a second way in rather
-//! than a second implementation. The shortcuts shown beside the items are read
-//! back out of the keymap, which means a binding changed in `main` changes what
-//! the menu advertises with it.
-//!
-//! A menu item is greyed out when its action is not reachable from wherever the
-//! keyboard is — and a greyed-out item does not swallow its key equivalent, so
-//! ⌘C in the name field still reaches the field even though the Edit menu also
-//! claims it.
+//! The application menu bar and associated commands
 
 use crate::editor::ShowCharacterPalette;
 #[cfg(target_os = "macos")]
@@ -37,7 +25,6 @@ actions!(
     ]
 );
 
-/// The bar as macOS draws it: the first menu is the application's own.
 pub fn app_menus() -> Vec<Menu> {
     vec![
         Menu {
@@ -58,7 +45,6 @@ pub fn app_menus() -> Vec<Menu> {
             name: "File".into(),
             items: vec![
                 MenuItem::action("New Calculation", NewDocument),
-                // Naming is what saving means here; see `workspace`.
                 MenuItem::action("Name Calculation…", NameDocument),
                 MenuItem::separator(),
                 MenuItem::action("Find Calculation…", ToggleSearch),
@@ -84,8 +70,6 @@ pub fn app_menus() -> Vec<Menu> {
         Menu {
             name: "View".into(),
             items: vec![
-                // Neither reads as a checkbox: gpui's menus have no state to
-                // show one with, so both are named as the switch they throw.
                 MenuItem::action("Always on Top", ToggleAlwaysOnTop),
                 MenuItem::separator(),
                 MenuItem::action("Toggle Full Screen", ToggleFullScreen),
@@ -110,11 +94,6 @@ pub fn app_menus() -> Vec<Menu> {
     ]
 }
 
-/// Handles the commands that belong to the app rather than to the calculation:
-/// the window's own chrome, and hiding or leaving the app altogether.
-///
-/// These are registered globally so they work no matter where the keyboard is —
-/// including, for the menu's purposes, when nothing at all is focused.
 pub fn register_actions(cx: &mut App) {
     #[cfg(target_os = "macos")]
     cx.on_action(|_: &About, _: &mut App| platform::macos::show_about_panel());
@@ -132,8 +111,6 @@ pub fn register_actions(cx: &mut App) {
         with_active_window(cx, |window, _| window.toggle_fullscreen());
     });
 
-    // Closing this way goes around the platform's own close, and so around the
-    // flush hung off `on_window_should_close`; the write has to happen here.
     cx.on_action(|_: &CloseWindow, cx: &mut App| {
         let Some(handle) = cx
             .active_window()
@@ -152,7 +129,6 @@ pub fn register_actions(cx: &mut App) {
     cx.on_action(|_: &Quit, cx: &mut App| cx.quit());
 }
 
-/// Runs `f` against the frontmost window, if the app has one.
 fn with_active_window(cx: &mut App, f: impl FnOnce(&mut Window, &mut App)) {
     let Some(window) = cx.active_window() else {
         return;

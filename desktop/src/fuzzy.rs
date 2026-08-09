@@ -1,18 +1,7 @@
-//! The subsequence matcher the help and search modals rank with.
-//!
-//! It rewards contiguous runs, start-of-word hits, and exact prefixes, so typing
-//! "kph" ranks "kph" above "kilometer per hour". Scores are comparable across
-//! calls, which is what lets the search modal merge name matches and line
-//! matches into one ranking.
-
-/// Scores how well `query` matches `text`, or `None` when `query` is not a
-/// subsequence of it. Higher is better; case-insensitive.
 pub fn score(query: &str, text: &str) -> Option<i32> {
     score_lowercase(&query.to_lowercase(), &text.to_lowercase())
 }
 
-/// [`score`] for callers that have already lowercased both sides — the search
-/// indexes hold their keys that way so a keystroke does not re-case the catalog.
 pub fn score_lowercase(query: &str, text: &str) -> Option<i32> {
     if query.is_empty() {
         return Some(0);

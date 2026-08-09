@@ -1,31 +1,5 @@
-//! SI decimal prefixes, and the opt-in mechanism that lets any unit family use
-//! them.
-//!
-//! A prefixed unit is stored alongside the unit it modifies
-//! (see [`Unit::Prefixed`]) rather than as a separate enum variant. A family
-//! opts in by naming its *coherent* member(s) with [`si_prefixable!`]:
-//!
-//! ```ignore
-//! si_prefixable!(Length, [Meter]);
-//! ```
-//!
-//! from which `Zm`, `daL`, `quettameters` and the rest follow automatically.
-//!
-//! Two rules keep this from swallowing established names:
-//!
-//! 1. A prefix is only tried *after* every exact unit name has failed to match
-//!    ([`Unit::from_str`]), so `pc` stays a parsec (not a picocoulomb), `min` a
-//!    minute (not a milli-inch) and `cal` a calorie.
-//! 2. A symbol prefix only attaches to a unit's symbol and a spelled-out prefix
-//!    only to its spelled-out names — `nF` and `nanofarad` resolve, the mixed
-//!    `nfarad` and `nanoF` do not.
-//!
-//! [`Unit::Prefixed`]: crate::representations::Unit::Prefixed
-//! [`Unit::from_str`]: crate::representations::Unit::from_str
-
 use crate::representations::Float;
 
-/// An SI decimal prefix: a power of ten that scales the unit it is written on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Prefix {
     Quetta,
@@ -55,9 +29,6 @@ pub enum Prefix {
 }
 
 impl Prefix {
-    /// Every SI prefix, largest first. Resolution walks this order, which also
-    /// settles the one ambiguous split: `da` (deca) is tried before `d` (deci),
-    /// so `daN` is ten newtons rather than a failed deci-`aN`.
     pub const ALL: &'static [Prefix] = &[
         Prefix::Quetta,
         Prefix::Ronna,
@@ -85,9 +56,6 @@ impl Prefix {
         Prefix::Quecto,
     ];
 
-    /// The symbols this prefix is written with, canonical form first. Micro
-    /// also accepts the two Greek mu characters; `u` remains the usual ASCII
-    /// form.
     pub fn symbols(&self) -> &'static [&'static str] {
         match self {
             Prefix::Quetta => &["Q"],
@@ -117,7 +85,6 @@ impl Prefix {
         }
     }
 
-    /// The spelled-out forms of this prefix, canonical first.
     pub fn names(&self) -> &'static [&'static str] {
         match self {
             Prefix::Quetta => &["quetta"],
@@ -147,17 +114,14 @@ impl Prefix {
         }
     }
 
-    /// The canonical symbol, used for display (`nF`, `daN`).
     pub fn symbol(&self) -> &'static str {
         self.symbols()[0]
     }
 
-    /// The canonical spelled-out name.
     pub fn name(&self) -> &'static str {
         self.names()[0]
     }
 
-    /// The power of ten this prefix stands for.
     pub fn exponent(&self) -> i32 {
         match self {
             Prefix::Quetta => 30,
@@ -187,40 +151,22 @@ impl Prefix {
         }
     }
 
-    /// The multiplier this prefix contributes to a unit's conversion factor.
     pub fn factor(&self) -> Float {
         Float::parse(&format!("1e{}", self.exponent())).expect("power of ten parses")
     }
 }
 
-/// A family of units that SI prefixes may be written on.
-///
-/// Implemented with [`si_prefixable!`], which lists the *coherent* members of
-/// the family — the ones a prefix actually means something on (`Meter`, never
-/// `Kilometer` or `Mile`). Non-SI units that are conventionally prefixed anyway
-/// (the liter, the bar, the tonne) are listed too, since that is what people
-/// write.
 pub trait SiPrefixable: Copy + 'static {
-    /// The units of this family a prefix may attach to.
     const PREFIXABLE: &'static [Self];
 
-    /// The unit's canonical symbol — the display form a prefix is written on.
     fn symbol(&self) -> &'static str;
 
-    /// Every name the unit parses from, symbols and spelled-out forms alike.
     fn names(&self) -> Vec<&'static str>;
 
-    /// Abbreviation-style aliases a symbol prefix may sit on even though they
-    /// look like words, declared per unit for the spellings convention mixes
-    /// (`msec`, `kgmol`).
     fn extra_symbol_forms(&self) -> &'static [&'static str] {
         &[]
     }
 
-    /// The names a *symbol* prefix may attach to: the canonical symbol, the
-    /// declared abbreviations, and any alias that is not a spelled-out word.
-    /// That last group is what lets `MOhm` read like `Mohm` and `kl` like `kL`,
-    /// without admitting `nanoF`.
     fn symbol_forms(&self) -> Vec<&'static str> {
         let mut forms = vec![self.symbol()];
         forms.extend(self.extra_symbol_forms().iter().copied());
@@ -233,20 +179,10 @@ pub trait SiPrefixable: Copy + 'static {
     }
 }
 
-/// Whether `name` is a spelled-out unit name rather than a symbol, and so may
-/// carry a spelled-out prefix. Three or more lowercase ASCII letters: enough to
-/// admit `farad`, `liters` and `ohm` while rejecting the symbol-ish aliases
-/// that share the same list (`L`, `l`, `Da`), which would otherwise let
-/// `millil` through.
 fn is_spelled_out(name: &str) -> bool {
     name.len() >= 3 && name.chars().all(|c| c.is_ascii_lowercase())
 }
 
-/// Resolves `s` as a prefix written on a unit of family `T` — `nF`,
-/// `nanofarad`, `nanofarads` — or `None` when it is not one.
-///
-/// Symbol prefixes pair with symbols and spelled-out prefixes with spelled-out
-/// names, so the halves of a name always agree in style.
 pub fn parse_si_prefixed<T: SiPrefixable>(s: &str) -> Option<(Prefix, T)> {
     for prefix in Prefix::ALL {
         for symbol in prefix.symbols() {

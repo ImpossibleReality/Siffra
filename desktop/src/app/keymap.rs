@@ -1,5 +1,3 @@
-//! Key bindings shared by the application shell and its text controls.
-
 use crate::app::menus::{CloseWindow, Hide, HideOthers, Minimize, Quit, ToggleFullScreen};
 use crate::editor::{
     DocumentEnd, DocumentStart, Down, Newline, SelectDown, SelectUp, ShowCharacterPalette, Up,
@@ -42,7 +40,6 @@ fn text_editing_bindings(context: &'static str) -> Vec<KeyBinding> {
     ]
 }
 
-/// All application key bindings.
 pub fn bindings() -> Vec<KeyBinding> {
     let editor = Some("SiffraEditor");
     let mut bindings = text_editing_bindings("SiffraEditor");

@@ -1,5 +1,3 @@
-//! Reusable application chrome, assets, theme, and small interactive controls.
-
 pub mod assets;
 pub mod code_block;
 pub mod easing;

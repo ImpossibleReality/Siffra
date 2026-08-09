@@ -12,7 +12,6 @@ fn display_value(value: Value) -> String {
 }
 
 fn one(line: &str) -> String {
-    // A fixed rate keeps these tests deterministic and offline.
     install_static_rates(&[("USD", 1.08)]);
     match evaluate_line(line, &mut SiffraState::new()) {
         Ok(Some(value)) => display_value(value),
@@ -53,8 +52,6 @@ fn addition_and_subtraction_are_relative_and_ordered() {
     assert_eq!(one("10 - 5%"), "9.5");
     assert_eq!(one("10% + 5%"), "15 %");
 
-    // A leading percentage is not reinterpreted relative to the value on its
-    // right.
     assert!(one("5% + $10").starts_with("ERR:"));
     assert!(one("5% + 10").starts_with("ERR:"));
 }

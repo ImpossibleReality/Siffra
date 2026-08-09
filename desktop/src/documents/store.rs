@@ -1,22 +1,4 @@
-//! Persistence store for saved calculations.
-//!
-//! Every document is a whole editor buffer. The workspace writes shortly after
-//! typing settles, so writes have to be cheap and durable — hence redb, an
-//! embedded copy-on-write key/value store, rather than a file per document or a
-//! server.
-//!
-//! A document is named by the user, from the field in the toolbar. A name is
-//! only ever one that was typed: an unnamed calculation has none, and the date
-//! it was created stands in for one wherever it is shown. The date is stored in
-//! its own right, so naming a calculation adds something rather than replacing
-//! what was there.
-//!
-//! Only calculations with something in them are kept here. An empty one that has
-//! been named is the workspace's to hold in memory; an empty one that has not is
-//! nothing to keep at all.
-//!
-//! The record format is stable so documents already saved on disk remain
-//! readable.
+//! Persistence store for saved calculations. Every document is a whole editor buffer which is stored on disk using redb. The record format is stable so documents already saved on disk remain readable.
 
 use chrono::{Local, TimeZone};
 use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
@@ -24,34 +6,26 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// Documents keyed by id, stored as JSON so the record can gain fields without
-/// a migration.
+/// Documents keyed by id, encoded as JSON.
 const DOCUMENTS: TableDefinition<u64, &str> = TableDefinition::new("documents");
-/// Application data directory name for the document database.
 const DATA_DIRECTORY: &str = "dev.impossiblereality.siffra";
 const DATABASE_FILE: &str = "documents.redb";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Document {
     pub id: u64,
-    /// The name the user gave it, or `None` while it has none. What is shown for
-    /// an unnamed calculation is [`Document::display_title`], its creation date.
-    /// Defaulted so a record written without the field still loads.
+    /// User-provided name; omitted names display the creation date.
     #[serde(default)]
     pub title: Option<String>,
     pub content: String,
-    /// Where the caret was left, in characters from the start of the content.
-    /// Defaulted so records written before cursors were stored still load.
+    /// Caret offset in bytes.
     #[serde(default)]
     pub cursor: usize,
-    /// Creation time in milliseconds since the Unix epoch.
     pub created_at: i64,
     pub updated_at: i64,
 }
 
 impl Document {
-    /// An empty, unnamed calculation. Nothing keeps it yet: it is written to the
-    /// store once it has content, and held in memory once it has a name.
     pub fn new(id: u64, created_at: i64) -> Self {
         Self {
             id,
@@ -63,16 +37,14 @@ impl Document {
         }
     }
 
-    /// What the calculation is called on screen: its name, or the date it was
-    /// created while it has none.
+    /// Returns the user name or a formatted creation date.
     pub fn display_title(&self) -> String {
         self.title
             .clone()
             .unwrap_or_else(|| date_title(self.created_at))
     }
 
-    /// Names the calculation, or takes its name away again — a blank name is no
-    /// name rather than an empty one.
+    /// Sets or clears the user name.
     pub fn set_title(&mut self, title: &str) {
         self.title = match title.trim() {
             "" => None,
@@ -84,17 +56,12 @@ impl Document {
         self.content.trim().is_empty()
     }
 
-    /// Whether anything should outlive the moment the calculation is left:
-    /// content is kept on disk, a name alone is kept in memory, and neither is
-    /// kept at all.
+    /// Whether this document has content or a name.
     pub fn is_worth_keeping(&self) -> bool {
         !self.is_empty() || self.title.is_some()
     }
 }
 
-/// Reconciles a record with how names are stored now. Documents written before
-/// names and dates were kept apart hold their creation date as their name; one
-/// that still matches its own date was never actually named.
 fn normalized(mut document: Document) -> Document {
     let named_after_its_date = document
         .title
@@ -113,7 +80,6 @@ pub fn now_millis() -> i64 {
         .unwrap_or(0)
 }
 
-/// The default name for a document the user has not named: its creation date.
 pub fn date_title(created_at: i64) -> String {
     match Local.timestamp_millis_opt(created_at).single() {
         Some(dt) => dt.format("%b %-d, %Y at %-I:%M %p").to_string(),
@@ -121,8 +87,6 @@ pub fn date_title(created_at: i64) -> String {
     }
 }
 
-/// Where the store lives. `None` when the platform has no data directory, which
-/// leaves the session unsaved rather than guessing at a path.
 pub fn database_path() -> Option<PathBuf> {
     Some(dirs::data_dir()?.join(DATA_DIRECTORY).join(DATABASE_FILE))
 }
@@ -138,8 +102,6 @@ fn fail(context: &str, err: impl std::fmt::Display) -> String {
 }
 
 impl DocumentStore {
-    /// Opens (creating if needed) the store at `path`, ensuring its table
-    /// exists so later read transactions never race against a missing table.
     pub fn open(path: &Path) -> Result<Self> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
@@ -177,9 +139,6 @@ impl DocumentStore {
             .map(normalized))
     }
 
-    /// Writes `document` over whatever is stored under its id. Only calculations
-    /// with content belong here, so a blank one is refused rather than quietly
-    /// leaving an empty record behind.
     pub fn put(&self, document: &Document) -> Result<()> {
         if document.is_empty() {
             return Err("cannot save a blank calculation".to_string());
@@ -207,8 +166,6 @@ impl DocumentStore {
             .map_err(|err| fail("could not save the calculation", err))
     }
 
-    /// Every non-blank document, contents included: the search modal matches
-    /// against the text of each calculation, not just its name.
     pub fn list(&self) -> Result<Vec<Document>> {
         let txn = self
             .db
@@ -232,7 +189,6 @@ impl DocumentStore {
             }
         }
 
-        // Keep the search list in most-recently-edited order.
         documents.sort_by_key(|document| std::cmp::Reverse(document.updated_at));
         Ok(documents)
     }
@@ -241,9 +197,6 @@ impl DocumentStore {
         self.read_document(id)
     }
 
-    /// An id nothing is stored under. Ids are creation timestamps, nudged
-    /// forward on the rare collision so that two calculations started in the
-    /// same millisecond both survive.
     pub fn reserve_id(&self, preferred: u64) -> Result<u64> {
         let mut id = preferred;
         while self.read_document(id)?.is_some() {
@@ -282,7 +235,6 @@ mod tests {
         (store, dir)
     }
 
-    /// A calculation with `content` already written to `store`.
     fn saved(store: &DocumentStore, content: &str) -> Document {
         let created_at = now_millis();
         let id = store.reserve_id(created_at as u64).expect("reserve id");
@@ -328,8 +280,6 @@ mod tests {
         assert_eq!(document.display_title(), date_title(document.created_at));
     }
 
-    /// Records written before names and dates were kept apart carry the date as
-    /// the name; reading one back must not make it look named.
     #[test]
     fn a_document_named_after_its_own_date_reads_back_unnamed() {
         let (store, _dir) = store();
@@ -376,8 +326,6 @@ mod tests {
         assert_ne!(first.id, second.id);
     }
 
-    /// The field names stored in `documents.redb`. Renaming one makes every
-    /// document already saved unreadable.
     #[test]
     fn records_serialize_with_the_field_names_already_on_disk() {
         let (store, _dir) = store();

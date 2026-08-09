@@ -74,8 +74,7 @@ impl SiffraState {
             if total == Value::from(0.0) {
                 self.block_total = Some(value.clone());
             } else {
-                // Preserve expression order so a percentage applies to the
-                // running total as `total + percentage` does.
+                // Keep the running total on the left for percentage semantics.
                 let total_unit = total.dimension();
                 let value_unit = value.dimension();
                 self.block_total = total.try_add(value);

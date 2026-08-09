@@ -1,7 +1,7 @@
 //! The searchable help dialog view.
 //!
 //! Catalog entries come from `siffra::catalog`; the introductory overview is
-//! authored in this module.
+//! authored in the [`super::content`] module.
 
 use crate::fuzzy;
 use crate::text::{Left, Right};
@@ -941,8 +941,6 @@ impl Render for HelpModal {
 
         overlay("help-overlay")
             .capture_key_down(cx.listener(Self::handle_overlay_key_down))
-            // An empty search field passes the arrows on rather than moving a
-            // caret it has no text for, which is what walks the tabs.
             .on_action(cx.listener(|modal, _: &Left, window, cx| modal.step_tab(-1, window, cx)))
             .on_action(cx.listener(|modal, _: &Right, window, cx| modal.step_tab(1, window, cx)))
             .on_mouse_down(

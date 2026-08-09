@@ -12,30 +12,22 @@ use chumsky::error::{RichPattern, RichReason};
 use chumsky::prelude::*;
 use chumsky::text;
 
-/// Names that are treated as operators / keywords and therefore may not be used
-/// as bare variable identifiers.
 const RESERVED_VARS: &[&str] = &[
     "plus", "minus", "times", "of", "over", "by", "divided", "divide", "in", "as", "to", "into",
     "let", "on", "off", "what", "is",
 ];
 
-/// Functions that may be called without parentheses, such as `sin 5` or
-/// `log 100`.
 const KNOWN_FUNCS: &[&str] = &[
     "log", "ln", "sqrt", "sin", "cos", "tan", "asin", "acos", "atan", "root", "exp", "abs",
     "round", "floor", "ceil", "trunc", "sign", "sinh", "cosh", "tanh", "gamma",
 ];
 
-/// Words that look like unit names but are actually operators/keywords, so they
-/// must never be consumed as a unit. `in` is intentionally absent because it is
-/// also a valid unit (inches).
 const UNIT_EXCLUDE: &[&str] = &[
     "plus", "minus", "times", "of", "over", "by", "divided", "divide", "as", "to", "into", "on",
     "off", "what", "is",
 ];
 
-/// Replaces comment contents with spaces while preserving character offsets, so
-/// error spans still line up with the input.
+// Replace comment contents with spaces so spans keep their offsets.
 fn blank_comments(input: &str) -> String {
     let chars: Vec<char> = input.chars().collect();
     let mut out = chars.clone();
@@ -68,24 +60,17 @@ fn blank_comments(input: &str) -> String {
     out.into_iter().collect()
 }
 
-/// The error type produced by the line parser. `Rich` carries the custom
-/// messages that [`describe_error`] turns into user-facing text.
 type Extra<'a> = extra::Err<Rich<'a, char>>;
 type Boxed<'a, O> = chumsky::Boxed<'a, 'a, &'a str, O, Extra<'a>>;
 
-/// Converts a chumsky span into this crate's own [`Span`].
+/// Converts a chumsky span into a siffra [`Span`].
 fn to_span(span: SimpleSpan<usize>) -> Span {
     Span::new(span.start, span.end)
 }
 
-/// The numeric literal grammar shared by evaluation and tolerant syntax
-/// analysis. Keeping it here prevents highlighting from drifting away from
-/// what the calculator accepts (notably grouped digits and exponents).
+// Shared numeric grammar for evaluation and syntax highlighting.
 fn number_parser<'a>() -> Boxed<'a, String> {
     let digit = any().filter(|c: &char| c.is_ascii_digit());
-    // Underscores may separate arbitrary digits. Commas, however, must form
-    // conventional three-digit groups so an argument separator in `min(1,2)`
-    // can never be swallowed as part of a number.
     let plain_digits: Boxed<'a, String> = digit
         .then(just('_').or_not().then(digit).repeated())
         .to_slice()
@@ -142,8 +127,7 @@ fn number_parser<'a>() -> Boxed<'a, String> {
 }
 
 /// The chemical qualifier grammar shared by evaluation and tolerant syntax
-/// analysis. Chemical validity is checked later by `Compound`; this parser is
-/// intentionally concerned only with the formula's syntactic extent.
+/// analysis. Chemical validity is checked later by `Compound`
 fn chemical_parser<'a>() -> Boxed<'a, String> {
     any()
         .filter(|c: &char| c.is_ascii_uppercase() || *c == '(')
@@ -157,13 +141,10 @@ fn chemical_parser<'a>() -> Boxed<'a, String> {
         .boxed()
 }
 
-/// Builds the parser for a single line of input.
 fn line_parser<'a>() -> impl Parser<'a, &'a str, ParsedLine, Extra<'a>> {
     let sp: Boxed<'a, ()> = just(' ').repeated().boxed();
     let sp1: Boxed<'a, ()> = just(' ').repeated().at_least(1).boxed();
 
-    // Succeeds (without consuming) when the next char is not part of an
-    // identifier, so keywords like `plus` don't match inside `plush`.
     let word_boundary: Boxed<'a, ()> = any()
         .filter(|c: &char| !(c.is_ascii_alphanumeric() || *c == '_'))
         .rewind()
@@ -171,7 +152,6 @@ fn line_parser<'a>() -> impl Parser<'a, &'a str, ParsedLine, Extra<'a>> {
         .or(end())
         .boxed();
 
-    // Matches a whole keyword, requiring a word boundary afterwards.
     let kw = {
         let word_boundary = word_boundary.clone();
         move |w: &'static str| just(w).then_ignore(word_boundary.clone()).boxed()
@@ -200,9 +180,7 @@ fn line_parser<'a>() -> impl Parser<'a, &'a str, ParsedLine, Extra<'a>> {
             .map(|name| format!("°{name}")),
         ascii_unit_name,
     ))
-    // Do not accept a unit as a prefix of an identifier. In particular,
-    // `5 m2` must not become the dimensional value `5 m` multiplied by `2`;
-    // the variable shorthand is intentionally the adjacent `5m2` form.
+    // Prevent a unit from being parsed as the prefix of an identifier
     .then_ignore(word_boundary.clone())
     .try_map(|s: String, span: SimpleSpan| {
         if UNIT_EXCLUDE.contains(&s.as_str()) {
@@ -213,12 +191,8 @@ fn line_parser<'a>() -> impl Parser<'a, &'a str, ParsedLine, Extra<'a>> {
     })
     .boxed();
 
-    // A chemical formula, e.g. `H2O`, `NaCl`, `Ca(OH)2`. Captured verbatim.
     let chemical_str = chemical_parser();
 
-    // A chemical qualifier is part of a single unit atom, so the natural
-    // `g H2O` form is unambiguous even though it contains one space. Brackets
-    // remain available for compound unit expressions such as `[g H2O / L]`.
     let unit_atom: Boxed<'a, ParsedUnit> = unit_name
         .clone()
         .then(sp1.clone().ignore_then(chemical_str.clone()).or_not())
@@ -531,8 +505,7 @@ fn line_parser<'a>() -> impl Parser<'a, &'a str, ParsedLine, Extra<'a>> {
             )
             .boxed();
 
-        // An implicit product has ordinary multiplication precedence, rather
-        // than atom precedence: `5m^2` is `5 * (m^2)`, not `(5m)^2`.
+        // Implicit multiplication binds below exponentiation.
         let product = recursive(|product| {
             let ungrouped_function = func_name
                 .clone()
@@ -587,11 +560,6 @@ fn line_parser<'a>() -> impl Parser<'a, &'a str, ParsedLine, Extra<'a>> {
                 })
                 .boxed();
 
-            // Prefix negation is accepted on either side of `^`. Keeping the
-            // recursive operand at the unary level preserves right
-            // associativity
-            // (`2^3^2`) and makes negative exponents (`2^-3`) natural, while
-            // `-2^2` continues to mean `-(2^2)`.
             let unary = recursive(|unary| {
                 let power = factorial
                     .clone()
@@ -652,10 +620,6 @@ fn line_parser<'a>() -> impl Parser<'a, &'a str, ParsedLine, Extra<'a>> {
             })
             .boxed();
 
-            // Implicit multiplication of directly-adjacent terms: `5(x)(y)`,
-            // `2pi`, and `5m^2`.
-            // A following minus belongs to subtraction, not to an implicitly
-            // multiplied negative factor (`4 - 2` must not become `4 * -2`).
             let nonnegative_unary = sp
                 .clone()
                 .ignore_then(just('-'))
@@ -686,11 +650,7 @@ fn line_parser<'a>() -> impl Parser<'a, &'a str, ParsedLine, Extra<'a>> {
             Convert(ParsedDimension, Span),
         }
 
-        // Arithmetic and conversion postfixes share one chain. A conversion
-        // therefore applies to everything before it, while a following `* 2`
-        // can continue operating on the converted value. Contiguous `on`/`off`
-        // percentage applications are folded separately below, because their
-        // natural-language reading is right-associative.
+        // Conversion is a postfix at multiplication precedence.
         let mul_tail = choice((
             mul_op
                 .clone()
@@ -803,19 +763,9 @@ fn line_parser<'a>() -> impl Parser<'a, &'a str, ParsedLine, Extra<'a>> {
         .map(|name: &str| name.to_string())
         .boxed();
 
-    // End-of-line conversion: `<expr> -> unit` converts the *entire* line to
-    // `unit`. Unlike the `in`/`as`/`to` postfix (which binds at the `mul`
-    // level), this binds looser than everything, so `5 m + 3 in -> cm`
-    // converts the whole sum without parentheses. Because it lives at the line
-    // level, it is only ever valid at the very end of the line. For an
-    // assignment it wraps the right-hand side, so the stored value is converted
-    // too.
-    // The arrow's target unit must be the last thing on the line. We capture
-    // any remaining characters so a trailing `+ 2` (etc.) can be reported
-    // against the arrow itself, rather than surfacing a generic "unexpected
-    // character" further along.
     let rest_of_line: Boxed<'a, String> = any().repeated().collect::<String>().boxed();
 
+    // `->` converts the complete line and must be last.
     let arrow_conversion = sp
         .clone()
         .ignore_then(just("->").map_with(|_, e| to_span(e.span())))
@@ -823,10 +773,6 @@ fn line_parser<'a>() -> impl Parser<'a, &'a str, ParsedLine, Extra<'a>> {
         .then(units.clone())
         .then_ignore(sp.clone())
         .then(rest_of_line)
-        // The error is *emitted* rather than returned: chumsky throws away the
-        // errors of a branch it backtracks out of, so failing here would let
-        // the optional arrow quietly match nothing and surface an unhelpful
-        // "unexpected '>'" from the subtraction attempt instead.
         .validate(
             |((arrow_span, dim), rest): ((Span, ParsedDimension), String), _, emitter| {
                 if !rest.is_empty() {
@@ -884,24 +830,13 @@ fn line_parser<'a>() -> impl Parser<'a, &'a str, ParsedLine, Extra<'a>> {
         .then_ignore(end())
 }
 
-/// Reads a line as a header — a title line introduced by one or more leading
-/// `#` markers, as in `# Trip budget`. Returns the title with the markers and
-/// surrounding whitespace stripped; an empty title (`#` on its own) still
-/// counts as a header.
-///
-/// `#` is also a scalar unit alias (`5 #`), but a unit cannot open a line, so a
-/// leading `#` is unambiguous.
+/// Parses a `#`-prefixed header line.
 pub fn parse_header(input: &str) -> Option<String> {
     let rest = input.trim_start().strip_prefix('#')?;
     Some(rest.trim_start_matches('#').trim().to_string())
 }
 
-/// Parses a single line into a [`ParsedLine`].
-///
-/// Blank lines and comment-only lines produce [`ParsedLine::Comment`], and
-/// `#`-prefixed lines produce [`ParsedLine::Header`]. Syntax errors are
-/// reported as [`SiffraExecutionError`] values with spans pointing at the
-/// offending characters.
+/// Parses one line into an expression, assignment, header, or comment.
 pub fn parse_line(input: &str) -> Result<ParsedLine, SiffraExecutionError> {
     if let Some(title) = parse_header(input) {
         return Ok(ParsedLine::Header(title));
@@ -916,7 +851,6 @@ pub fn parse_line(input: &str) -> Result<ParsedLine, SiffraExecutionError> {
         .parse(cleaned.as_str())
         .into_result()
         .map_err(|errs| {
-            // Prefer the error that made the most progress through the input.
             let err = errs
                 .into_iter()
                 .max_by_key(|e| e.span().end)
@@ -927,12 +861,7 @@ pub fn parse_line(input: &str) -> Result<ParsedLine, SiffraExecutionError> {
         })
 }
 
-/// Turns a chumsky error into a human-friendly (message, description) pair.
-/// The message is shown inline; the description appears in the error popover.
 fn describe_error(err: &Rich<'_, char>, input: &str) -> (String, String) {
-    // Chumsky may report the assignment operator as the unexpected token when
-    // the right-hand side has not been entered yet.  From a user's perspective
-    // the assignment is valid so far; it is just unfinished.
     if is_incomplete_assignment(input) {
         return (
             "Incomplete expression".to_string(),
@@ -948,9 +877,6 @@ fn describe_error(err: &Rich<'_, char>, input: &str) -> (String, String) {
                 format!("The character '{}' isn't valid here", c),
             ),
             None => {
-                // Ran out of input part-way through an expression. Chumsky no
-                // longer tracks delimiters itself, so an unclosed bracket shows
-                // up as a closing delimiter among the expected tokens.
                 if let Some(closing) = expected.iter().find_map(closing_delimiter) {
                     return (
                         "Unclosed bracket".to_string(),
@@ -975,7 +901,6 @@ fn describe_error(err: &Rich<'_, char>, input: &str) -> (String, String) {
     }
 }
 
-/// The closing delimiter an expected-token pattern stands for, if it is one.
 fn closing_delimiter(pattern: &RichPattern<'_, char>) -> Option<char> {
     match pattern {
         RichPattern::Token(token) => matches!(**token, ')' | ']' | '}').then(|| **token),
@@ -1059,7 +984,6 @@ mod tests {
         assert!(matches!(parse("# Trip budget"), ParsedLine::Header(t) if t == "Trip budget"));
         assert!(matches!(parse("  ## Notes  "), ParsedLine::Header(t) if t == "Notes"));
         assert!(matches!(parse("#"), ParsedLine::Header(t) if t.is_empty()));
-        // `#` is still a scalar unit when it follows a number.
         assert!(matches!(parse("5 #"), ParsedLine::Expression(_)));
     }
 
@@ -1190,8 +1114,6 @@ mod tests {
 
     #[test]
     fn end_of_line_arrow_converts_the_whole_expression() {
-        // Binds looser than `+`, so the conversion wraps the entire sum without
-        // needing parentheses.
         let ParsedLine::Expression(ParsedExpr::UnOpPost { lhs, op, .. }) =
             parse("5 m + 3 in -> cm")
         else {
@@ -1200,8 +1122,6 @@ mod tests {
         assert!(matches!(op, OpPost::Convert(_)));
         assert!(matches!(*lhs, ParsedExpr::BinOp { op: Op::Add, .. }));
 
-        // Also works without spaces and on assignments, converting the stored
-        // value.
         parse("5 m + 3 in ->cm");
         let ParsedLine::Variable(name, ParsedExpr::UnOpPost { op, .. }) =
             parse("x = 5 m + 3 in -> cm")
@@ -1214,11 +1134,8 @@ mod tests {
 
     #[test]
     fn arrow_is_only_valid_at_the_end_of_the_line() {
-        // Not a general infix operator: it may not appear mid-expression.
         assert!(parse_line("(5 -> cm) + 2").is_err());
 
-        // Trailing content after the target unit is reported against the arrow
-        // with a descriptive message.
         for input in ["5 m -> cm + 2", "5 m -> cm * 3", "5 m -> cm in mm"] {
             let error = parse_line(input).expect_err("content after `-> unit` is invalid");
             assert_eq!(

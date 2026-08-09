@@ -35,9 +35,6 @@ pub use {
     time::Time,
 };
 
-/// The abstract physical axes. Compatibility for addition, subtraction, and
-/// conversion is decided *purely* here — never by which concrete unit is
-/// shown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum BaseDimension {
     Length,
@@ -51,17 +48,10 @@ pub enum BaseDimension {
     ElectricCurrent,
 }
 
-/// A physical dimension expressed as a map from base axis to exponent, e.g.
-/// velocity is `{Length: 1, Time: -1}`. Derived from a [`Dimension`], so two
-/// values
-/// may be added/converted iff their dimensionalities are equal. Exponents are
-/// [`Float`] so fractional powers (`sqrt(m^2) = m`) round-trip exactly.
 #[derive(Default, Debug, Clone, PartialEq)]
 pub struct Dimensionality(BTreeMap<BaseDimension, Float>);
 
 impl Dimensionality {
-    /// Adds `exponent` to `axis`, dropping the axis entirely when it cancels to
-    /// zero so that equality ignores cancelled dimensions.
     pub fn add_axis(&mut self, axis: BaseDimension, exponent: Float) {
         let entry = self.0.entry(axis).or_insert_with(|| Float::from(0));
         *entry = &*entry + &exponent;
@@ -70,8 +60,6 @@ impl Dimensionality {
         }
     }
 
-    /// True when this carries no physical dimension (a bare number, or a pure
-    /// scalar unit such as `%`).
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
@@ -90,8 +78,6 @@ pub enum QuantityKind {
     ElectricCurrent,
 }
 
-/// A base unit: one of the primitive quantity axes, optionally tagged with a
-/// chemical compound (for stoichiometric mass<->amount conversion).
 #[derive(Debug, Clone, PartialEq)]
 pub enum Quantity {
     Length(length::Length),
@@ -158,7 +144,6 @@ impl Quantity {
         }
     }
 
-    /// The abstract axis this base unit lives on.
     pub fn base_dimension(&self) -> BaseDimension {
         match self {
             Quantity::Length(_) => BaseDimension::Length,
@@ -191,8 +176,6 @@ impl Quantity {
         }
     }
 
-    /// Ratio to the canonical unit of this axis (meter, second, gram, mole,
-    /// radian, kelvin).
     pub fn get_ratio(&self) -> Float {
         match self {
             Quantity::Length(length) => length.ratio(),
@@ -207,24 +190,12 @@ impl Quantity {
     }
 }
 
-/// A single named unit term: either a base [`Quantity`] or a named
-/// [`DerivedUnit`]. This is what is *stored and displayed*; the physical
-/// [`Dimensionality`] is derived from it, so `N·m` and `J` stay distinct on
-/// screen even though they compare equal for arithmetic.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Unit {
     Base(Quantity),
     Derived(DerivedUnit),
-    /// An absolute (affine) temperature. Special-cased in conversion; decays to
-    /// its interval unit under any arithmetic (see [`AbsoluteTemperature`]).
     Absolute(AbsoluteTemperature),
-    /// A currency, whose conversion factor is a live exchange rate resolved at
-    /// evaluation time (see [`Currency`]).
     Currency(Currency),
-    /// A unit written with an SI prefix — `nF`, `daN`, `GWh`. Always wraps a
-    /// [`Unit::Base`] or [`Unit::Derived`] whose family opted in via
-    /// [`si_prefixable!`](crate::si_prefixable), so a prefixed unit costs no
-    /// enum variant of its own (see [`prefix`]).
     Prefixed(Prefix, Box<Unit>),
 }
 
@@ -233,14 +204,10 @@ impl Unit {
         Unit::Base(quantity)
     }
 
-    /// Resolves a unit name, preferring base units and falling back to named
-    /// derived units (`mph`, `N`, `J`, …).
     pub fn from_str(s: &str) -> Result<Self, ()> {
         if let Ok(quantity) = Quantity::from_str(s) {
             return Ok(Unit::Base(quantity));
         }
-        // Resolve absolute temperatures first so `C`, `F`, and `K` stay
-        // temperatures rather than becoming derived units.
         if let Ok(absolute) = AbsoluteTemperature::from_str(s) {
             return Ok(Unit::Absolute(absolute));
         }
@@ -250,16 +217,12 @@ impl Unit {
         if let Ok(currency) = Currency::from_str(s) {
             return Ok(Unit::Currency(currency));
         }
-        // Try prefixes only after exact names so established names such as
-        // `pc`, `min`, and `cal` remain intact.
         if let Some(prefixed) = prefixed_from_str(s) {
             return Ok(prefixed);
         }
         Err(())
     }
 
-    /// Attaches a chemical compound if this is a base mass/amount unit; a no-op
-    /// otherwise.
     pub fn with_chemical(self, compound: Compound) -> Self {
         match self {
             Unit::Base(quantity) => Unit::Base(quantity.with_chemical(compound)),
@@ -280,9 +243,6 @@ impl Unit {
         }
     }
 
-    /// Splits any SI prefix off this unit: the multiplier the prefix
-    /// contributes, and the unit it is written on. An unprefixed unit yields a
-    /// multiplier of one and itself, so callers can treat both uniformly.
     fn split_prefix(&self) -> (Float, &Unit) {
         match self {
             Unit::Prefixed(prefix, unit) => (prefix.factor(), unit),
@@ -290,7 +250,6 @@ impl Unit {
         }
     }
 
-    /// The base-axis exponents contributed by *one* of this unit.
     pub fn dimensionality(&self) -> Dimensionality {
         let mut dim = Dimensionality::default();
         match self {
@@ -303,11 +262,6 @@ impl Unit {
         dim
     }
 
-    /// Conversion factor for *one* of this unit into canonical base units.
-    ///
-    /// Fallible because a currency's factor is a live exchange rate that may be
-    /// unavailable. For an absolute temperature this is its *interval* (linear)
-    /// scale — the affine offset is applied only by [`Value::convert`].
     pub fn factor(&self) -> Option<Float> {
         match self {
             Unit::Base(quantity) => Some(quantity.get_ratio()),
@@ -320,8 +274,6 @@ impl Unit {
         }
     }
 
-    /// The underlying base quantity and the scale its SI prefix contributes, if
-    /// this is a base unit (`mm` is the meter scaled by 1/1000).
     fn as_base(&self) -> Option<(&Quantity, Float)> {
         let (scale, unit) = self.split_prefix();
         match unit {
@@ -331,10 +283,6 @@ impl Unit {
     }
 }
 
-/// Resolves a unit name written as an SI prefix on a prefixable unit — `nF`,
-/// `nanofarad`, `daN`, `Mm`. Base quantities are tried before named derived
-/// units, mirroring the precedence of the exact lookups in
-/// [`Unit::from_str`].
 fn prefixed_from_str(s: &str) -> Option<Unit> {
     fn base<T: SiPrefixable>(s: &str, into_quantity: impl Fn(T) -> Quantity) -> Option<Unit> {
         let (prefix, unit) = parse_si_prefixed::<T>(s)?;
@@ -356,10 +304,7 @@ fn prefixed_from_str(s: &str) -> Option<Unit> {
         })
 }
 
-/// A stored unit expression: an ordered product of named unit terms with
-/// (possibly fractional) powers, e.g. `mph` is `[(mph, 1)]` and `N·m` is
-/// `[(N, 1), (m, 1)]`. This is the source of truth for rendering; math routes
-/// through [`Dimension::dimensionality`].
+/// An ordered product of named unit terms with (possibly fractional) powers
 #[derive(Default, Debug, Clone, PartialEq)]
 pub struct Dimension(pub Vec<(Unit, Float)>);
 
@@ -409,16 +354,10 @@ impl Dimension {
         Self(units).simplify()
     }
 
-    /// The canonical percentage unit. Percentages deliberately remain named
-    /// values instead of being eagerly divided by 100 so arithmetic can apply
-    /// their contextual behavior (for example, `10 USD + 5%`).
     pub fn percent() -> Self {
         Self(vec![(Unit::Derived(DerivedUnit::Percent), Float::from(1))])
     }
 
-    /// True only for a standalone percentage at power one. Other
-    /// dimensionless scalar units (ppm, basis points, `%^2`, …) keep their
-    /// ordinary unit-conversion behavior.
     pub fn is_percent(&self) -> bool {
         matches!(
             self.0.as_slice(),
@@ -426,8 +365,6 @@ impl Dimension {
         )
     }
 
-    /// Merges identical unit terms, drops zero powers, and preserves different
-    /// units on the same axis so `N·m` remains distinguishable from `J`.
     pub fn simplify(&self) -> Self {
         let mut new_dimension: Vec<(Unit, Float)> = Vec::new();
 
@@ -450,9 +387,6 @@ impl Dimension {
         Dimension(new_dimension)
     }
 
-    /// The physical dimensionality of the whole expression (used for
-    /// add/convert compatibility). Cancelled axes disappear, so `km*ms/h` and
-    /// `m` both reduce to `{Length: 1}`.
     pub fn dimensionality(&self) -> Dimensionality {
         let mut dimensionality = Dimensionality::default();
         for (unit, power) in self.0.iter() {
@@ -463,9 +397,6 @@ impl Dimension {
         dimensionality
     }
 
-    /// The conversion factor for the whole expression into canonical base
-    /// units: the product of each term's factor raised to its power. `None` if
-    /// any term's factor is unavailable (a currency with no live rate).
     pub fn factor(&self) -> Option<Float> {
         let mut factor = Float::from(1);
         for (unit, power) in self.0.iter() {
@@ -482,10 +413,7 @@ impl Dimension {
         Dimension(new_dimension).simplify()
     }
 
-    /// The multiplier taking a magnitude in `self`'s units to `other`'s units.
-    /// It is `factor(other) / factor(self)` when dimensionalities match;
-    /// returns `None` for incompatible dimensions, except the stoichiometric
-    /// mass<->amount bridge.
+    /// Returns the multiplier that converts `self` into `other`.
     pub fn get_ratio(&self, other: &Self) -> Option<Float> {
         if self.dimensionality() == other.dimensionality() {
             return Some(&other.factor()? / &self.factor()?);
@@ -493,9 +421,6 @@ impl Dimension {
         self.stoichiometric_ratio(other)
     }
 
-    /// Handles the one conversion that crosses dimensionalities: a chemical
-    /// compound weighed as mass on one side and counted as amount (moles) on
-    /// the other, bridged by its molar mass. Base units only.
     fn stoichiometric_ratio(&self, other: &Self) -> Option<Float> {
         if self.0.len() != other.0.len() {
             return None;
@@ -550,17 +475,13 @@ impl Dimension {
         matched.iter().all(|used| *used).then_some(ratio)
     }
 
-    /// Returns the multiplier for one legal mass<->amount chemical bridge.
-    /// Both terms must be first power; all remaining terms are matched
-    /// independently by [`stoichiometric_ratio`](Self::stoichiometric_ratio).
-    /// Each side is a base quantity paired with the scale of any SI prefix
-    /// written on it.
     fn bridge_ratio(
         (quantity, scale): (&Quantity, &Float),
         power: &Float,
         (other, other_scale): (&Quantity, &Float),
         other_power: &Float,
     ) -> Option<Float> {
+        // Stoichiometric bridges are valid only for first-power terms.
         let one = Float::from(1);
         if *power != one || *other_power != one {
             return None;
@@ -589,10 +510,7 @@ impl Dimension {
         self.0.is_empty()
     }
 
-    /// The absolute temperature iff this expression is exactly one such unit at
-    /// power +1, the only shape for which an affine transform is meaningful.
-    /// Anything else (compound, or a power other than 1) is not an absolute
-    /// temperature and converts linearly.
+    /// Returns the lone affine temperature term, if this dimension has one.
     pub fn as_absolute_temperature(&self) -> Option<AbsoluteTemperature> {
         match self.0.as_slice() {
             [(Unit::Absolute(absolute), power)] if *power == Float::from(1) => Some(*absolute),
@@ -600,11 +518,7 @@ impl Dimension {
         }
     }
 
-    /// Decays any absolute-temperature term to its linear interval unit unless
-    /// this is a standalone power-1 absolute temperature. Called after
-    /// multiplication or exponentiation, where the affine identity no longer
-    /// holds.
-    /// Factor-preserving, so the associated magnitude does not change.
+    /// Replaces affine temperatures with linear intervals after arithmetic.
     pub fn decay_absolute(self) -> Self {
         if self.as_absolute_temperature().is_some() {
             return self;
@@ -623,11 +537,6 @@ impl Dimension {
         Dimension(terms)
     }
 
-    /// Reverse-lookup index: every named derived unit whose dimensionality
-    /// equals this expression's — the candidates for a named collapse (e.g.
-    /// `kg*m/s^2`
-    /// yields `[Newton]`). Exposed for an explicit `simplify`; not applied
-    /// automatically.
     pub fn named_equivalents(&self) -> Vec<DerivedUnit> {
         let dimensionality = self.dimensionality();
         DerivedUnit::ALL
@@ -637,16 +546,7 @@ impl Dimension {
             .collect()
     }
 
-    /// Expands every named [`DerivedUnit`] term into the product of base
-    /// [`Quantity`] units it is defined from (`N` -> `kg*m/s^2`, `mph` -> `mi/h`,
-    /// `%` -> dimensionless), distributing the term's power over the expansion
-    /// and leaving base, currency and absolute-temperature terms untouched.
-    ///
-    /// The result has the same physical [`Dimensionality`], so a [`Value`] can
-    /// be `convert`ed into it losslessly — any scalar factor a derived unit
-    /// carried (the 3.6M in `kWh`, the 1/100 in `%`) is absorbed into the
-    /// converted magnitude. Inverse of [`collapse_to_named`](Self::collapse_to_named);
-    /// backs an explicit `expand` command.
+    /// Expands named derived units into base units while preserving factors.
     pub fn expand(&self) -> Dimension {
         let mut terms: Vec<(Unit, Float)> = Vec::new();
         for (unit, power) in self.0.iter() {
@@ -662,11 +562,7 @@ impl Dimension {
         Dimension(terms).simplify()
     }
 
-    /// If exactly one named unit matches this whole expression's
-    /// dimensionality,
-    /// returns that single-term expression (`kg*m/s^2` -> `N`). Ready for an
-    /// explicit `simplify` command; ambiguous matches (none / several) yield
-    /// `None`.
+    /// Collapses to a unique canonical named unit, if one exists.
     pub fn collapse_to_named(&self) -> Option<Dimension> {
         let canonical: Vec<DerivedUnit> = self
             .named_equivalents()
@@ -679,16 +575,7 @@ impl Dimension {
         }
     }
 
-    /// When multiplying `self` by `other`, returns a clean target expression
-    /// iff
-    /// the product *fully cancels* one or more base axes across differing units
-    /// (e.g. `mph * s` cancels Time, `J / N` cancels Mass and Time). The target
-    /// is built from the operands' own units, so `mph * s` collapses to miles
-    /// rather than showing a mixed `mph*s`.
-    ///
-    /// Deliberately conservative: an axis must vanish entirely. Products where
-    /// every axis survives (`N * m`, `kg * m/s^2`) return `None` and keep their
-    /// display, so this never editorialises a clean product into a named unit.
+    /// Chooses a display dimension when multiplying operands cancels an axis.
     pub fn collapse_target(&self, other: &Self) -> Option<Dimension> {
         let self_dim = self.dimensionality();
         let other_dim = other.dimensionality();
@@ -711,8 +598,6 @@ impl Dimension {
             return Some(Dimension::default());
         }
 
-        // Prefer units named by derived operands, then incidental units, then
-        // the canonical unit for the surviving axis.
         let mut preferred: BTreeMap<BaseDimension, Unit> = BTreeMap::new();
         let mut incidental: BTreeMap<BaseDimension, Unit> = BTreeMap::new();
         for (unit, _) in self.0.iter().chain(other.0.iter()) {
@@ -756,9 +641,6 @@ impl Dimension {
     }
 }
 
-/// The canonical unit for each axis — the last-resort collapse target when no
-/// operand names a surviving axis (EUR for currency, otherwise the ratio-1 base
-/// unit).
 fn default_unit(axis: BaseDimension) -> Unit {
     match axis {
         BaseDimension::Length => Unit::Base(Quantity::Length(Length::Meter)),

@@ -1,5 +1,3 @@
-//! Editor-specific commands and their text-editing handlers.
-
 use super::Editor;
 use super::interaction::CopyFlash;
 use crate::calculation::LineOutput;
@@ -11,8 +9,6 @@ use crate::text::{
 use gpui::{ClipboardItem, Context, Window, actions};
 use std::time::Instant;
 
-// What only a column of text can do. The rest of the editor's commands are the
-// ones every field shares, and live in `text_input`.
 actions!(
     siffra,
     [
@@ -230,8 +226,6 @@ impl Editor {
         self.replace_selection("\n", EditKind::Discrete, cx);
     }
 
-    /// The value on a line, if that is what it produced. An error has nothing
-    /// worth copying, and a line that produced nothing has nothing at all.
     pub(super) fn value_at(&self, index: usize) -> Option<&str> {
         match self.displayed.get(index)?.as_ref()? {
             LineOutput::Value { string, .. } if !string.is_empty() => Some(string),
@@ -239,8 +233,6 @@ impl Editor {
         }
     }
 
-    /// Takes a result, at full precision rather than as much of it as the column
-    /// had room to show.
     pub(super) fn copy_result(&mut self, index: usize, cx: &mut Context<Self>) {
         let Some(value) = self.value_at(index) else {
             return;
@@ -256,10 +248,6 @@ impl Editor {
     }
 
     pub(super) fn copy(&mut self, _: &Copy, _: &mut Window, cx: &mut Context<Self>) {
-        // A result copy takes precedence while the pointer is over a result —
-        // but only while the pointer is what the user moved last. A pointer left
-        // over a result while they went on typing is not a request to copy it,
-        // so from the first keystroke onwards ⌘C is the selected text's again.
         if let Some(index) = self.hovered_result
             && self.pointer_leads
             && self.value_at(index).is_some()

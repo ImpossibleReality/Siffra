@@ -1,4 +1,4 @@
-//! Siffra — a notepad you can calculate in.
+//! Siffra -- a lightweight, fast, and accurate calculator with support for dimensional analysis
 
 mod app;
 mod calculation;

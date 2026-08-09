@@ -1,11 +1,3 @@
-//! The input column: the shaped lines, the caret, and the rules that mark
-//! headings out in the gutter.
-//!
-//! Everything here is painted rather than composed out of divs, because the
-//! text is one thing measured once — a line, its wrapping, and the caret's
-//! place inside it all come from the same shaped layout, and drawing it as a
-//! stack of elements would mean measuring it twice and hoping the two agreed.
-
 use super::Editor;
 use super::layout::{Layout, row_rects};
 use crate::ui::theme;
@@ -20,13 +12,9 @@ use std::rc::Rc;
 pub struct InputElement {
     editor: Entity<Editor>,
     layout: Rc<Layout>,
-    /// Minimum input height, so clicks below a short calculation still land in
-    /// the text area.
+    /// Minimum height keeps clicks below short documents in the text area.
     min_height: Pixels,
-    /// For each line, the byte range its diagnostic points at, if it has one
-    /// that is being shown. Held per line rather than as one range over the
-    /// document because that is how the engine reports it, and because a span
-    /// never crosses a line.
+    /// Per-line byte ranges for visible diagnostics.
     errors: Vec<Option<Range<usize>>>,
 }
 
@@ -88,11 +76,6 @@ impl Element for InputElement {
         _window: &mut Window,
         cx: &mut App,
     ) -> Self::PrepaintState {
-        // Mouse handling lives on the wrapper div, which needs to know where the
-        // text ended up to turn a click into an offset. Keeping the caret in
-        // view is not done here: the scrolling container has already read its
-        // offset by this point, so it is settled while the frame is laid out
-        // instead — see `Editor::scroll_caret_into_view`.
         self.editor.update(cx, |editor, _| {
             editor.text_bounds = Some(bounds);
         });
@@ -125,10 +108,6 @@ impl Element for InputElement {
         for (index, line) in self.layout.lines.iter().enumerate() {
             let origin = point(bounds.origin.x, top);
 
-            // A `#` line is a heading wherever it sits. Every line is set in the
-            // same type — the input has to wrap identically whatever a line
-            // means — so a heading is marked by weight, colour and a rule in the
-            // gutter, none of which move the text.
             if line.is_header {
                 let inset = metrics.font_size * theme::HEADER_RULE_INSET_EM;
                 window.paint_quad(quad(
@@ -147,9 +126,6 @@ impl Element for InputElement {
                 ));
             }
 
-            // Drawn to the height of the line box, which is what the selection
-            // on a line of text comes out as, so a run of selected lines reads
-            // as one unbroken column however many of them are blank.
             if line.blank_and_selected {
                 window.paint_quad(quad(
                     Bounds::new(
@@ -164,11 +140,6 @@ impl Element for InputElement {
                 ));
             }
 
-            // What the diagnostic beside this line is pointing at, washed over
-            // and underscored. The span is an inline box, so it covers the
-            // text's own height rather than the looser line box holding it, and
-            // its rule is drawn just below that — under the glyphs, which are
-            // painted over the lot of it.
             if let Some(error) = self.errors.get(index).and_then(Option::as_ref) {
                 let top_of_text = metrics.half_leading();
                 let height = metrics.ascent + metrics.descent;
@@ -238,9 +209,6 @@ impl Element for InputElement {
                 .ok();
         }
 
-        // The caret is drawn to the height of the text rather than the height
-        // of the line box, and only for a plain caret — a selection shows as
-        // its own highlight and does not want a bar as well.
         if focus_handle.is_focused(window)
             && caret_visible
             && selection.is_empty()

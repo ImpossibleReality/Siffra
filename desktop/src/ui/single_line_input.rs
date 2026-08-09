@@ -1,15 +1,3 @@
-//! A reusable single-line field with native text input and IME support.
-//!
-//! Features own what the value means and what to do with it. The field emits a
-//! change as soon as its text mutates, so a search can debounce matching and a
-//! document title can save or validate independently of text entry.
-//!
-//! What the box around the text looks like is the owner's business too: the
-//! field draws the text, the selection and the caret, and hands its own element
-//! to a closure the owner supplied to be dressed. Everything the field needs to
-//! know to place a caret — its padding, how tall the caret stands, whether the
-//! text is centred — is data it is built with.
-
 use crate::text::{
     Backspace, Copy, Cut, Delete, DeleteToLineStart, DeleteWordLeft, DeleteWordRight, EditKind,
     End, Home, Left, Paste, Redo, Right, SelectAll, SelectEnd, SelectHome, SelectLeft, SelectRight,

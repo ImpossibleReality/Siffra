@@ -1,15 +1,3 @@
-//! The workspace toolbar: what the calculation is called, and
-//! the buttons beside it.
-//!
-//! The window's own title bar is drawn transparent, so this stands in for it.
-//! That means it is also the window's drag handle — everywhere except the name,
-//! which is a field rather than somewhere to take hold of the window.
-//!
-//! The bar owns two things outright: the name, which it edits and hands back
-//! when the field is committed, and the pin, which is nothing but a window
-//! level. What the other buttons open belongs to the workspace, so they are
-//! reported as events.
-
 use crate::platform;
 use crate::ui::UI_FONT;
 use crate::ui::assets::icon;
@@ -24,11 +12,8 @@ use gpui::{
     prelude::FluentBuilder, px, svg,
 };
 
-/// How far the window may travel under a press before it counts as having been
-/// dragged rather than pressed.
 const DRAG_SLOP: f64 = 2.0;
 
-/// The toolbar uses the interface font rather than the editor's monospace font.
 const UI_FONT_FAMILY: &str = UI_FONT;
 
 #[cfg(target_os = "macos")]
@@ -46,39 +31,22 @@ pub enum ToolbarEvent {
 }
 
 pub struct Toolbar {
-    /// What the open calculation is called on screen: the name the user gave it,
-    /// or the date it was created while it has none.
     title: SharedString,
-    /// The name field. It holds what the user is typing; while the field is idle
-    /// it is kept in step with `title`
     name: Entity<SingleLineInput>,
     editing: bool,
-    /// The name last given to the window, so the platform is only troubled when
-    /// it actually changes.
     window_title: Option<SharedString>,
-    /// Whether the window is being held above the others.
     pinned: bool,
     help_open: bool,
-    /// Held only while the name is being edited: whatever the user clicks next
-    /// commits what they typed, exactly as leaving the field does.
     blur_subscription: Option<Subscription>,
-    /// The press now in progress, if it began in the bar.
     press: Option<Press>,
     name_hovered: bool,
     window_movable: bool,
     _subscriptions: Vec<Subscription>,
 }
 
-/// A press in the bar, from the moment it begins. The bar is the window's drag
-/// handle, so a press that takes the window with it was a drag of the window
-/// rather than a press on whatever it started over — which is only knowable once
-/// the press is over, and only by what became of the window.
 #[derive(Clone, Copy)]
 struct Press {
-    /// Where the window stood when the press began.
     window_origin: Point<Pixels>,
-    /// Whether it began over the name, which is the only part of the bar that
-    /// acts on the press itself rather than on a click.
     on_name: bool,
 }
 
@@ -94,8 +62,6 @@ impl Toolbar {
                 name_field_chrome,
                 cx,
             );
-            // Until it is clicked the field is only there to be read, so a press
-            // on it starts a rename rather than dropping a caret into the name.
             field.set_read_only(true, cx);
             field
         });
@@ -120,7 +86,6 @@ impl Toolbar {
 
     pub fn set_title(&mut self, title: impl Into<SharedString>, cx: &mut Context<Self>) {
         self.title = title.into();
-        // Do not overwrite a draft while the name field is being edited.
         if !self.editing {
             let title = self.title.clone();
             self.name.update(cx, |name, cx| name.set_value(title, cx));
@@ -133,8 +98,6 @@ impl Toolbar {
         cx.notify();
     }
 
-    /// Moves focus into the name field with the current name selected, so typing
-    /// replaces it. Also reachable from the workspace's ⌘S.
     pub fn start_editing(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.editing {
             return;
@@ -156,7 +119,6 @@ impl Toolbar {
         cx.notify();
     }
 
-    /// Hands the name back to the workspace, unless nothing about it changed.
     fn commit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if !self.editing {
             return;
@@ -169,7 +131,6 @@ impl Toolbar {
             .update(cx, |name, cx| name.set_read_only(true, cx));
 
         if draft.trim() == self.title.as_ref() {
-            // Restore the canonical title when trimming made this a no-op.
             let title = self.title.clone();
             self.name.update(cx, |name, cx| name.set_value(title, cx));
         } else {
@@ -178,7 +139,6 @@ impl Toolbar {
         cx.notify();
     }
 
-    /// Abandons the edit; the field falls back to the stored name.
     fn cancel(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if !self.editing {
             return;
@@ -220,11 +180,6 @@ impl Toolbar {
         }
     }
 
-    /// Holds the window still only while a press on the name would be the user
-    /// reaching for the text in it. The bar is the window's drag handle and the
-    /// platform acts on that before this application sees the press, so the
-    /// window has to be still *before* the press — which means following the
-    /// pointer rather than waiting for it to be pressed.
     fn apply_window_movable(&mut self, _window: &mut Window) {
         let movable = !(self.editing && self.name_hovered);
         if movable != self.window_movable {
@@ -234,17 +189,11 @@ impl Toolbar {
         }
     }
 
-    /// Whether the press that is finishing carried the window with it. Dragging
-    /// the window is the platform's own doing, and it leaves the press looking
-    /// like an ordinary click on whatever it started over — so what the press
-    /// did to the window is what tells the two apart.
     fn window_moved(&self, window: &Window) -> bool {
         self.press
             .is_some_and(|press| moved(press.window_origin, window.bounds().origin))
     }
 
-    /// Whether the press that is finishing began over the name. A release there
-    /// after a press somewhere else is the end of that other press.
     fn pressed_name(&self) -> bool {
         self.press.is_some_and(|press| press.on_name)
     }
@@ -258,7 +207,6 @@ impl Toolbar {
 
 impl Render for Toolbar {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // Avoid sending the same title to the native window on every render.
         let window_title = if self.title.is_empty() {
             SharedString::new_static("Siffra")
         } else {
@@ -269,7 +217,6 @@ impl Render for Toolbar {
             self.window_title = Some(window_title);
         }
 
-        // The centered title must clear both the traffic lights and the buttons.
         let window_width = f32::from(window.viewport_size().width);
         let title_max = theme::TITLE_MAX_WIDTH
             .min(window_width - theme::TITLE_SIDE_RESERVE)
@@ -283,10 +230,7 @@ impl Render for Toolbar {
             .relative()
             .bg(theme::toolbar_bg())
             .font_family(UI_FONT_FAMILY)
-            // The custom title bar remains the window's drag target.
             .window_control_area(WindowControlArea::Drag)
-            // Noted before anything in the bar acts on the press, so that every
-            // one of them can tell a click from the start of a window drag.
             .capture_any_mouse_down(cx.listener(|toolbar, _: &MouseDownEvent, window, _| {
                 toolbar.press = Some(Press {
                     window_origin: window.bounds().origin,
@@ -299,14 +243,8 @@ impl Render for Toolbar {
             .justify_center()
             .child(
                 div()
-                    // Identified so its hover state survives between frames.
                     .id("toolbar-title")
-                    // Handle these keys at the toolbar level so they can commit
-                    // or cancel the document name edit.
                     .on_key_down(cx.listener(Self::on_name_key_down))
-                    // The window is only held still while the pointer is over
-                    // the name, so that the rest of the bar goes on dragging it
-                    // — including the press that ends the rename.
                     .on_hover(cx.listener(|toolbar, hovered: &bool, window, _| {
                         toolbar.name_hovered = *hovered;
                         toolbar.apply_window_movable(window);
@@ -319,9 +257,6 @@ impl Render for Toolbar {
                             }
                         }),
                     )
-                    // An idle field starts editing instead of placing a caret,
-                    // and only once the press it started with is over: until
-                    // then the press may yet turn out to be a window drag.
                     .on_mouse_up(
                         MouseButton::Left,
                         cx.listener(|toolbar, _: &MouseUpEvent, window, cx| {
@@ -335,8 +270,6 @@ impl Render for Toolbar {
                             toolbar.start_editing(window, cx);
                         }),
                     )
-                    // Result buttons do not necessarily take keyboard focus,
-                    // so focus loss alone is not enough to finish a rename.
                     .when(self.editing, |title| {
                         title.on_mouse_down_out(cx.listener(
                             |toolbar, _: &MouseDownEvent, window, cx| {

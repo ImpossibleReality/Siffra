@@ -69,13 +69,11 @@ macro_rules! quantity {
 
 /// Declares which members of a unit enum accept SI prefixes.
 ///
-/// List only the units a prefix is meaningful on — the coherent one of each
-/// family (`Meter`, not `Mile`; `Gram`, not `Pound`) — plus the non-SI units
-/// people conventionally prefix anyway (`Liter`, `Bar`, `Tonne`). Every listed
+/// List only the units a prefix is meaningful on. Every listed
 /// unit then parses with any SI prefix, in both symbol and spelled-out form
 /// (`ZF`, `daN`, `nanofarads`), without needing a variant of its own.
 ///
-/// A unit may follow its name with extra *abbreviation-style* aliases that a
+/// A unit may follow its name with extra aliases that a
 /// symbol prefix is allowed to sit on, for spellings that mix the two styles by
 /// convention (`msec`, `kgmol`).
 ///

@@ -1,30 +1,14 @@
-//! The pill that says what just happened.
-//!
-//! A toast is a message and the moment it was raised; everything else about it
-//! follows from how long ago that was. Holding the time rather than a run of
-//! timers means the whole of the animation is a function of the clock, so a
-//! second message arriving mid-flight simply moves the start and the pill
-//! carries on from wherever it had got to.
-
 use crate::ui::easing::cubic_out;
 use crate::ui::theme;
 use gpui::{BoxShadow, Div, FontWeight, ParentElement, SharedString, Styled, div, point, px};
 use std::time::Instant;
 
-/// How the pill stands at a given moment: how far up it has travelled, and how
-/// far in it has faded.
 #[derive(Clone, Copy)]
 struct Phase {
     opacity: f32,
-    /// How far below its resting place the pill still is, in pixels.
     rise: f32,
 }
 
-/// One place a message can be shown, and the message currently in it.
-///
-/// Raising a second message while the first is still up replaces it and starts
-/// the animation again, which is what a run of copies in quick succession
-/// should look like.
 #[derive(Default)]
 pub struct Toast {
     message: Option<SharedString>,
@@ -46,7 +30,6 @@ impl Toast {
         let fade = theme::TOAST_FADE;
         let hold = theme::TOAST_HOLD;
 
-        // Use the same easing in reverse so the exit mirrors the entrance.
         let shown = if elapsed < fade {
             cubic_out(elapsed / fade)
         } else if elapsed < fade + hold {
@@ -63,14 +46,10 @@ impl Toast {
         })
     }
 
-    /// Whether the pill is still moving, and so whether the frame it is on has
-    /// to ask for another one.
     pub fn animating(&self) -> bool {
         self.phase().is_some()
     }
 
-    /// The pill, laid across the foot of whatever it is given to. `None` once
-    /// the message has been and gone.
     pub fn render(&self) -> Option<Div> {
         let phase = self.phase()?;
         let message = self.message.clone()?;
@@ -80,7 +59,6 @@ impl Toast {
                 .absolute()
                 .left_0()
                 .right_0()
-                // Rise into the resting bottom offset while fading in.
                 .bottom(px(theme::TOAST_BOTTOM - phase.rise))
                 .flex()
                 .justify_center()
