@@ -11,7 +11,7 @@ repository.workspace = true
 [dependencies]
 chumsky = "0.13"
 periodic-table-on-an-enum = "0.3.2"
-astro-float = { version = "0.9.5", default-features = false, features = [
+astro-float = { version = "0.9.6", default-features = false, features = [
     "std",
 ] }
 # Dynamic (currency) units: live rates from the Frankfurter API, cached to disk.
