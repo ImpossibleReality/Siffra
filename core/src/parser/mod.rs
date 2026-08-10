@@ -1269,6 +1269,18 @@ mod tests {
     }
 
     #[test]
+    fn every_ungrouped_function_name_is_a_real_function() {
+        // `sqrt 2` is only read as a call for the names listed here, so the list
+        // has to keep naming functions that exist.
+        for name in KNOWN_FUNCS {
+            assert!(
+                crate::registry::function(name).is_some(),
+                "KNOWN_FUNCS names '{name}', which is not a defined function"
+            );
+        }
+    }
+
+    #[test]
     fn parses_functions() {
         parse("sin(cos(5))");
         parse("log2(100)");

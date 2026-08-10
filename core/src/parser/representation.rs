@@ -354,6 +354,19 @@ impl TryFrom<ParsedExpr> for Expression {
                 let mut expressions = Vec::with_capacity(args.len() + 1);
 
                 if let Some(base) = base {
+                    // Only some functions read a subscript, and for those the base
+                    // is simply the first argument. Rejecting it here, rather than
+                    // letting it become an argument, keeps `sin_2(x)` from being
+                    // reported as a wrong argument count.
+                    if let Some(function) = crate::registry::function(&name)
+                        && matches!(function.base, crate::registry::Base::None)
+                    {
+                        return Err(siffra_error!(
+                            "Argument Error",
+                            format!("{name} does not take a base"),
+                            Some(function_span)
+                        ));
+                    }
                     expressions.push(Expression::try_from(*base)?)
                 }
 

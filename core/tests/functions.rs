@@ -219,3 +219,31 @@ fn physical_constants_include_dimensions() {
     assert_eq!(one("planck * 1 Hz in J"), "6.62607015E-34 J");
     assert_eq!(one("boltzmann * (300 iK) in J"), "4.141947E-21 J");
 }
+
+#[test]
+fn a_base_is_only_accepted_by_the_functions_that_read_one() {
+    assert_eq!(one("log_2(32)"), "5");
+    assert_eq!(one("root_3(27)"), "3");
+    // The same call written out long-hand, since the base is the first argument.
+    assert_eq!(one("root(3, 27)"), "3");
+
+    assert_eq!(one("sin_2(1)"), "ERR: Argument Error");
+    assert_eq!(one("abs2(4)"), "ERR: Argument Error");
+}
+
+#[test]
+fn aliases_resolve_to_the_same_function() {
+    assert_eq!(one("ear(5%, 12)"), one("apy(5%, 12)"));
+    assert_eq!(
+        one("compound(1000 USD, 5%, 10)"),
+        one("fv(1000 USD, 5%, 10)")
+    );
+}
+
+#[test]
+fn argument_counts_are_checked_before_the_function_runs() {
+    assert_eq!(one("sqrt(1, 2)"), "ERR: Argument Error");
+    assert_eq!(one("round(1, 2, 3)"), "ERR: Argument Error");
+    assert_eq!(one("mod(5)"), "ERR: Argument Error");
+    assert_eq!(one("nosuchfunction(1)"), "ERR: Name Error");
+}

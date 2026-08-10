@@ -2,14 +2,6 @@ use crate::error::SiffraExecutionError;
 use crate::representations::{Angle, Dimension, Float, Quantity, Unit, Value};
 use crate::siffra_error;
 
-pub(super) const MIN_FACTORIAL_INPUT: i32 = -1000;
-pub(super) const MAX_FACTORIAL_INPUT: i32 = 1000;
-pub(super) const MIN_ROUND_PLACES: i32 = -100;
-pub(super) const MAX_ROUND_PLACES: i32 = 100;
-pub(super) const MAX_COMPOUNDS_PER_YEAR: i32 = 1_000_000;
-pub(super) const MAX_INTEGER_FUNCTION_INPUT: i32 = 1_000_000;
-pub(super) const MAX_COMBINATORIC_INPUT: i32 = 1_000;
-
 pub(super) fn bounded_integer(value: &Float, min: i32, max: i32) -> Option<i32> {
     if !value.is_integer() {
         return None;
@@ -152,29 +144,6 @@ pub(super) fn decimal_rate(
     ))
 }
 
-pub(super) fn positive_periods(
-    value: &Value,
-    label: &str,
-    error_title: &str,
-    span: Option<crate::parser::Span>,
-) -> Result<i32, SiffraExecutionError> {
-    if !value.dimension().is_unitless() {
-        return Err(siffra_error!(
-            "Unit Error",
-            format!("{label} must be unitless; got {}", value_unit(value)),
-            span
-        ));
-    }
-    let raw = value.value();
-    bounded_integer(&raw, 1, MAX_COMPOUNDS_PER_YEAR).ok_or_else(|| {
-        siffra_error!(
-            error_title,
-            format!("{label} must be an integer from 1 through {MAX_COMPOUNDS_PER_YEAR}"),
-            span
-        )
-    })
-}
-
 pub(super) fn rate_result(value: Float, as_percent: bool) -> Value {
     let value = Value::new(value, None);
     if as_percent {
@@ -201,30 +170,4 @@ pub(super) fn gcd_float(lhs: &Float, rhs: &Float) -> Float {
         b = remainder;
     }
     a
-}
-
-pub(super) fn physical_constant(value: &str, terms: Vec<(Unit, i32)>) -> Value {
-    Value::new(
-        Float::parse(value).expect("valid physical constant"),
-        Some(Dimension::new(
-            terms
-                .into_iter()
-                .map(|(unit, power)| (unit, Float::from(power)))
-                .collect(),
-        )),
-    )
-}
-
-pub(super) fn factorial_exact(x: &Float) -> Float {
-    let one = Float::from(1.0);
-    let mut result = one.clone();
-    let mut i = one.clone();
-    while matches!(
-        i.partial_cmp(x),
-        Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
-    ) {
-        result = &result * &i;
-        i = &i + &one;
-    }
-    result
 }

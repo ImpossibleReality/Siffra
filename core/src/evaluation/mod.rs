@@ -1,5 +1,6 @@
+pub(crate) mod constants;
 mod expression;
-mod functions;
+pub(crate) mod functions;
 mod helpers;
 mod line;
 mod percentage;
