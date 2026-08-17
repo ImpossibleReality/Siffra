@@ -16,17 +16,16 @@ while IFS= read -r -d '' metadata; do
     platform="$(jq -er '.platform' "$metadata")"
     asset="$(jq -er '.asset' "$metadata")"
     format="$(jq -er '.format' "$metadata")"
+    signature="$(jq -er '.signature' "$metadata")"
     package="$asset_dir/$asset"
-    signature="$package.sig"
 
     test -f "$package"
-    test -f "$signature"
 
     url="https://github.com/ImpossibleReality/Siffra/releases/download/$tag/$asset"
     platforms="$(jq \
         --arg platform "$platform" \
         --arg url "$url" \
-        --arg signature "$(<"$signature")" \
+        --arg signature "$signature" \
         --arg format "$format" \
         '. + {($platform): {url: $url, signature: $signature, format: $format}}' \
         <<<"$platforms")"

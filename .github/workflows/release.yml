@@ -5,9 +5,9 @@ on:
     tags: ["v*"]
 
 # Release assets are published only after all supported platforms produce a
-# minisign-signed updater package. This detached updater signature is separate
-# from macOS code signing. It is safe to rerun a failed release: uploads replace
-# an existing asset with the same name.
+# minisign-signed updater package. The signature is embedded in latest.json and
+# is separate from macOS code signing. It is safe to rerun a failed release:
+# uploads replace an existing asset with the same name.
 permissions:
   contents: write
 
@@ -29,13 +29,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-26-intel
-            formats: app,dmg
-            platform: macos-x86_64
-            updater_format: app
-            updater_glob: '*.app.tar.gz'
-            updater_asset: Siffra-macos-x86_64.app.tar.gz
-            installer_glob: '*.dmg'
           - os: macos-15
             formats: app,dmg
             platform: macos-aarch64
@@ -124,18 +117,20 @@ jobs:
           test -n "$updater"
           test -n "$installer"
           test -f "$updater.sig"
-          test -f "$installer.sig"
           cp "$updater" "release/${{ matrix.updater_asset }}"
-          cp "$updater.sig" "release/${{ matrix.updater_asset }}.sig"
           cp "$installer" "release/$(basename "$installer")"
-          cp "$installer.sig" "release/$(basename "$installer").sig"
-          printf '{"platform":"%s","asset":"%s","format":"%s"}\n' \
-            '${{ matrix.platform }}' '${{ matrix.updater_asset }}' '${{ matrix.updater_format }}' \
+          signature="$(<"$updater.sig")"
+          jq -n \
+            --arg platform '${{ matrix.platform }}' \
+            --arg asset '${{ matrix.updater_asset }}' \
+            --arg format '${{ matrix.updater_format }}' \
+            --arg signature "$signature" \
+            '{platform: $platform, asset: $asset, format: $format, signature: $signature}' \
             > release/updater.json
 
           # Keep the artifact contract narrow: one updater package, one native
-          # installer, their detached signatures, and internal manifest data.
-          test "$(find release -maxdepth 1 -type f | wc -l | tr -d ' ')" -eq 5
+          # installer, and internal manifest data containing the signature.
+          test "$(find release -maxdepth 1 -type f | wc -l | tr -d ' ')" -eq 3
 
       - uses: actions/upload-artifact@v4
         with:
@@ -187,18 +182,18 @@ jobs:
           while IFS= read -r -d '' asset; do
             assets+=("$asset")
           done < <(find release-assets -type f \( \
-            -name '*.AppImage' -o -name '*.AppImage.sig' -o \
-            -name '*.app.tar.gz' -o -name '*.app.tar.gz.sig' -o \
-            -name '*-setup.exe' -o -name '*-setup.exe.sig' -o \
-            -name '*.dmg' -o -name '*.dmg.sig' -o \
-            -name '*.msi' -o -name '*.msi.sig' -o \
-            -name '*.deb' -o -name '*.deb.sig' -o \
+            -name '*.AppImage' -o \
+            -name '*.app.tar.gz' -o \
+            -name '*-setup.exe' -o \
+            -name '*.dmg' -o \
+            -name '*.msi' -o \
+            -name '*.deb' -o \
             -name latest.json \
             \) -print0)
 
-          # Four platforms contribute four public artifacts each, followed by
+          # Three platforms contribute two public artifacts each, followed by
           # the updater manifest. Refuse to publish anything else.
-          test "${#assets[@]}" -eq 17
+          test "${#assets[@]}" -eq 7
           for asset in "${assets[@]}"; do
             gh release upload "$GITHUB_REF_NAME" "$asset" --clobber
           done
