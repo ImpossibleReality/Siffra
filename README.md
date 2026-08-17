@@ -59,7 +59,7 @@ any problems running Siffra on your platform.
     - [x] Currency units
 - [x] Error handling
 - [x] Support for saving calculations
-- [x] Updated with support for auto-updating
+- [x] Updater with support for auto-updating
 - [ ] Multi-window support
 - [ ] Custom defined functions
 - [ ] Preferences page
