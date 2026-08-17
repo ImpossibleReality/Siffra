@@ -18,7 +18,13 @@ mendeleev = { version = "=0.8.4", default-features = false, features = [
 astro-float = { version = "0.9.6", default-features = false, features = [
     "std",
 ] }
-# Dynamic (currency) units: live rates from the Frankfurter API, cached to disk.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+jiff = { version = "0.2.35", default-features = false, features = ["std", "tz-system"] }
+
+# Dynamic (currency) units fetch live rates and cache them to disk. Neither is
+# possible on wasm, where the host installs rates instead.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 # Minimal reqwest: no default features (drops http2/h2, native-tls, system-proxy,
 # charset) and `rustls-no-provider` so we supply the lighter `ring` crypto
 # provider instead of the large aws-lc-rs C library. JSON is parsed via
@@ -28,7 +34,8 @@ reqwest = { version = "0.13", default-features = false, features = [
     "rustls-no-provider",
 ] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
 dirs = "6"
-jiff = { version = "0.2.35", default-features = false, features = ["std", "tz-system"] }
+
+# jiff reads the clock and the local zone through JavaScript on wasm.
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
+jiff = { version = "0.2.35", default-features = false, features = ["std", "tz-system", "js"] }

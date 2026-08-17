@@ -5,6 +5,7 @@ members = [
     "core",
     "conformance",
     "desktop",
+    "wasm",
 ]
 
 [profile.release]

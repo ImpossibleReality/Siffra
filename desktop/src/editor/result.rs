@@ -1,8 +1,9 @@
-use self::format::{NumberDisplay, format_number_for_characters, format_repeating_decimal};
 use super::layout::{Fonts, Metrics, row_rects};
 use crate::calculation::LineOutput;
+use siffra::representations::{
+    NumberDisplay, format_number_for_characters, format_repeating_decimal,
+};
 
-pub mod format;
 use crate::ui::theme;
 use gpui::{
     App, Bounds, Element, ElementId, Font, GlobalElementId, Hsla, InspectorElementId, IntoElement,

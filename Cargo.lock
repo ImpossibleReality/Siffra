@@ -2989,10 +2989,12 @@ dependencies = [
  "jiff-core",
  "jiff-static",
  "jiff-tzdb-platform",
+ "js-sys",
  "log",
  "portable-atomic",
  "portable-atomic-util",
  "serde_core",
+ "wasm-bindgen",
  "windows-link 0.2.1",
 ]
 
@@ -5116,6 +5118,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde-wasm-bindgen"
+version = "0.6.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8302e169f0eddcc139c70f139d19d6467353af16f9fce27e8c30158036a1e16b"
+dependencies = [
+ "js-sys",
+ "serde",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "serde_core"
 version = "1.0.229"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5297,6 +5310,16 @@ dependencies = [
  "siffra",
  "tempfile",
  "unicode-segmentation",
+]
+
+[[package]]
+name = "siffra-wasm"
+version = "0.3.1"
+dependencies = [
+ "serde",
+ "serde-wasm-bindgen",
+ "siffra",
+ "wasm-bindgen",
 ]
 
 [[package]]

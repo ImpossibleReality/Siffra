@@ -1,18 +1,28 @@
 //! Dynamic (currency) units.
 //!
 //! Currencies are resolved at evaluation time using the [Frankfurter](https://frankfurter.dev) API.
-//! Exchange rates are cached to disk and refresh at most once an hour.
+//! Exchange rates are cached to disk and refresh at most once an hour. On wasm, where neither the
+//! network nor the disk is reachable from here, the host installs rates with
+//! [`install_static_rates`] instead.
 
 use crate::representations::Float;
-use serde::{Deserialize, Serialize};
+#[cfg(not(target_arch = "wasm32"))]
+use serde::Deserialize;
+use serde::Serialize;
 use std::collections::BTreeMap;
+#[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::{SystemTime, UNIX_EPOCH};
 
+#[cfg(not(target_arch = "wasm32"))]
 const FRANKFURTER_URL: &str = "https://api.frankfurter.dev/v1/latest";
+#[cfg(not(target_arch = "wasm32"))]
 const CACHE_TTL_SECS: u64 = 3600;
-const FETCH_TIMEOUT: Duration = Duration::from_secs(8);
+#[cfg(not(target_arch = "wasm32"))]
+const FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(8);
+#[cfg(not(target_arch = "wasm32"))]
 const RETRY_BACKOFF_SECS: u64 = 60;
 
 const CANONICAL: &str = "EUR";
@@ -103,36 +113,34 @@ fn currency_name(code: &str) -> &'static str {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Deserialize)]
 struct FrankfurterResponse {
     rates: BTreeMap<String, f64>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Deserialize))]
 struct CachedRates {
     fetched_at: u64,
     rates: BTreeMap<String, f64>,
 }
 
+#[derive(Default)]
 struct State {
     table: Option<CachedRates>,
     override_rates: Option<BTreeMap<String, f64>>,
+    #[cfg(not(target_arch = "wasm32"))]
     loaded_disk: bool,
+    #[cfg(not(target_arch = "wasm32"))]
     refreshing: bool,
+    #[cfg(not(target_arch = "wasm32"))]
     last_attempt: u64,
 }
 
 fn state() -> &'static Mutex<State> {
     static STATE: OnceLock<Mutex<State>> = OnceLock::new();
-    STATE.get_or_init(|| {
-        Mutex::new(State {
-            table: None,
-            override_rates: None,
-            loaded_disk: false,
-            refreshing: false,
-            last_attempt: 0,
-        })
-    })
+    STATE.get_or_init(|| Mutex::new(State::default()))
 }
 
 pub fn install_static_rates(pairs: &[(&str, f64)]) {
@@ -141,6 +149,7 @@ pub fn install_static_rates(pairs: &[(&str, f64)]) {
     state().lock().unwrap().override_rates = Some(rates);
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -148,6 +157,7 @@ fn now() -> u64 {
         .unwrap_or(0)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn is_fresh(table: &Option<CachedRates>) -> bool {
     table
         .as_ref()
@@ -155,23 +165,27 @@ fn is_fresh(table: &Option<CachedRates>) -> bool {
 }
 
 fn rate(code: &str) -> Option<Float> {
+    #[cfg_attr(target_arch = "wasm32", allow(unused_mut))]
     let mut state = state().lock().unwrap();
 
     if let Some(rates) = &state.override_rates {
         return rates.get(code).and_then(|r| to_float(*r));
     }
 
-    if !state.loaded_disk {
-        state.loaded_disk = true;
-        state.table = load_disk();
-    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        if !state.loaded_disk {
+            state.loaded_disk = true;
+            state.table = load_disk();
+        }
 
-    let stale = !is_fresh(&state.table);
-    let backoff_elapsed = now().saturating_sub(state.last_attempt) >= RETRY_BACKOFF_SECS;
-    if stale && !state.refreshing && backoff_elapsed {
-        state.last_attempt = now();
-        state.refreshing = true;
-        spawn_refresh();
+        let stale = !is_fresh(&state.table);
+        let backoff_elapsed = now().saturating_sub(state.last_attempt) >= RETRY_BACKOFF_SECS;
+        if stale && !state.refreshing && backoff_elapsed {
+            state.last_attempt = now();
+            state.refreshing = true;
+            spawn_refresh();
+        }
     }
 
     state
@@ -182,6 +196,7 @@ fn rate(code: &str) -> Option<Float> {
         .and_then(|r| to_float(*r))
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn spawn_refresh() {
     std::thread::spawn(|| {
         let fetched = fetch();
@@ -205,6 +220,7 @@ fn to_float(rate: f64) -> Option<Float> {
     Float::parse(&format!("{rate}")).ok()
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn fetch() -> Option<BTreeMap<String, f64>> {
     ensure_tls_provider();
     let client = reqwest::blocking::Client::builder()
@@ -218,6 +234,7 @@ fn fetch() -> Option<BTreeMap<String, f64>> {
     Some(rates)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn ensure_tls_provider() {
     use std::sync::Once;
     static ONCE: Once = Once::new();
@@ -226,6 +243,7 @@ fn ensure_tls_provider() {
     });
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn cache_path() -> Option<PathBuf> {
     let mut path = dirs::cache_dir()?;
     path.push("siffra");
@@ -233,11 +251,13 @@ fn cache_path() -> Option<PathBuf> {
     Some(path)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn load_disk() -> Option<CachedRates> {
     let data = std::fs::read_to_string(cache_path()?).ok()?;
     serde_json::from_str(&data).ok()
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn save_disk(table: &CachedRates) {
     let Some(path) = cache_path() else {
         return;

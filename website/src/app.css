@@ -1,0 +1,65 @@
+:root {
+	/* Taken from the app's own theme, so the demo reads as the real window. */
+	--app-bg: #212329;
+	--app-text: #cdd4d7;
+	--app-title: #8a9196;
+	--app-selection: rgba(144, 190, 227, 0.25);
+
+	--tok-text: #cdd4d7;
+	--tok-header: #e6ebee;
+	--tok-comment: #727b8c;
+	--tok-chemical: #c9a0dc;
+	--tok-number: #dec4ab;
+	--tok-unit: #e5c07b;
+	--tok-operation: #90bee3;
+	--tok-result: #98c379;
+	--tok-error: #ea6868;
+	--tok-rule: #98c379;
+
+	--page-bg: #15161a;
+	--page-text: #d4d9dd;
+	--page-muted: #868d97;
+	--page-line: rgba(255, 255, 255, 0.09);
+
+	--mono: 'Roboto Mono', 'SF Mono', Menlo, 'Cascadia Mono', Consolas, 'DejaVu Sans Mono', monospace;
+	--sans: 'Inter Variable', Inter, system-ui, -apple-system, sans-serif;
+	--code-size: 0.95rem;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+html {
+	background: var(--page-bg);
+	-webkit-font-smoothing: antialiased;
+	scroll-behavior: smooth;
+}
+
+body {
+	margin: 0;
+	font-family: var(--sans);
+	color: var(--page-text);
+	background:
+		radial-gradient(60rem 35rem at 50% -8rem, rgba(83, 143, 214, 0.22), transparent 70%),
+		radial-gradient(45rem 30rem at 50% 55%, rgba(152, 195, 121, 0.06), transparent 70%),
+		var(--page-bg);
+	background-attachment: fixed;
+}
+
+a {
+	color: inherit;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	html {
+		scroll-behavior: auto;
+	}
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.001ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.001ms !important;
+	}
+}

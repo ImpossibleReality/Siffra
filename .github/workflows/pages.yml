@@ -1,0 +1,79 @@
+name: Pages
+
+on:
+  push:
+    branches: [main]
+    # The site is a prerendered SvelteKit page that embeds the calculator core
+    # as WebAssembly, so a core change is a site change.
+    paths:
+      - "website/**"
+      - "wasm/**"
+      - "core/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Let an in-flight deployment finish rather than cancelling it: a cancelled
+# deploy-pages run can leave the live site on the previous commit.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+
+      # Pinned to the version the wasm crate's wasm-opt flags were tuned for.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack@0.12.1
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        working-directory: website
+        run: bun install --frozen-lockfile
+
+      # `bun run build` runs wasm-pack first, then vite.
+      - name: Build the site
+        working-directory: website
+        run: bun run build
+
+      - name: Check the build output
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f website/build/index.html
+          test -f website/build/CNAME
+          # adapter-static emits the wasm module as a hashed asset; a missing one
+          # means the demo would load into a dead calculator.
+          test -n "$(find website/build/_app -name '*.wasm' -print -quit)"
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: website/build
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
