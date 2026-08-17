@@ -25,6 +25,17 @@ You can then clone the repository and run Siffra with the following command:
 cargo run
 ```
 
+#### Linux
+
+Linux has a few additional dependencies that need to be installed before building Siffra. You can
+install them with the following command:
+
+```sh
+sudo apt-get install -y libxkbcommon-dev libxkbcommon-x11-dev libxcb-shape0-dev libxcb-xfixes0-dev libgtk-3-dev libwebkit2gtk-4.1-dev libssl-dev
+```
+
+#### Packaging
+
 For a native installer, install `cargo-packager` and run
 `cargo packager --release --packages siffra-desktop`.
 
@@ -48,6 +59,7 @@ any problems running Siffra on your platform.
     - [x] Currency units
 - [x] Error handling
 - [x] Support for saving calculations
+- [x] Updated with support for auto-updating
 - [ ] Multi-window support
 - [ ] Custom defined functions
 - [ ] Preferences page
