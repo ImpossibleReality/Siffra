@@ -7,6 +7,8 @@ with GPUI and Rust.
     <img src="screenshot.png" alt="Siffra screenshot" style="border-radius: 0.8rem">
 </div>
 
+<div align="center"> <a href="https://siffra.impossiblereality.dev"><b>[ Live Demo ]</b></a></div>
+
 ## Installation
 
 ### Prebuild Binaries
