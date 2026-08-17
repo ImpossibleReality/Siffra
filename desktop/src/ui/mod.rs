@@ -1,6 +1,11 @@
 pub mod assets;
+pub mod badge;
+pub mod button;
+pub mod checkbox;
 pub mod code_block;
 pub mod easing;
+pub mod markdown;
+pub mod menu;
 pub mod modal;
 pub mod popover;
 pub mod single_line_input;

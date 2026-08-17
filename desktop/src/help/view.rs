@@ -18,6 +18,7 @@ use crate::ui::modal::{ModalSize, body as modal_body, close_button, header, over
 use crate::ui::single_line_input::{FieldMetrics, FieldState, SingleLineInput, ValueChanged};
 use crate::ui::theme;
 use crate::ui::tooltip::TextTooltip;
+use crate::updates::VersionButton;
 use gpui::{
     Animation, AnimationExt, AnyElement, App, AppContext, Context, CursorStyle, Div, Entity,
     EntityId, EventEmitter, FocusHandle, Focusable, FontWeight, InteractiveElement, IntoElement,
@@ -59,12 +60,17 @@ pub struct HelpModal {
     search_task: Option<Task<()>>,
     chevron_animation: Option<ChevronAnimation>,
     chevron_serial: u64,
+    version: Entity<VersionButton>,
 }
 
 impl EventEmitter<CloseHelp> for HelpModal {}
 
 impl HelpModal {
-    pub fn new(mono_family: SharedString, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        mono_family: SharedString,
+        version: Entity<VersionButton>,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let catalog = catalog();
         let open_sections = default_open_sections(&catalog);
         let searchable_units = searchable_units(&catalog);
@@ -111,10 +117,12 @@ impl HelpModal {
             search_task: None,
             chevron_animation: None,
             chevron_serial: 0,
+            version,
         }
     }
 
     pub fn open(&mut self, cx: &mut Context<Self>) {
+        self.version.update(cx, VersionButton::close_menu);
         self.tab = Tab::Overview;
         self.search.update(cx, |search, cx| {
             search.set_placeholder("Search overview…", cx);
@@ -616,8 +624,9 @@ impl Render for HelpModal {
                     .line_height(font_size * 1.15)
                     .on_mouse_down(
                         MouseButton::Left,
-                        cx.listener(|_, _: &MouseDownEvent, _, cx| {
+                        cx.listener(|modal, _: &MouseDownEvent, _, cx| {
                             cx.stop_propagation();
+                            modal.version.update(cx, VersionButton::close_menu);
                         }),
                     )
                     .child(
@@ -631,11 +640,18 @@ impl Render for HelpModal {
                                     .child(self.render_tab(Tab::Constants, font_size, cx))
                                     .child(self.render_tab(Tab::Units, font_size, cx)),
                             )
-                            .child(close_button("help-close").on_click(cx.listener(
-                                |modal, _, _, cx| {
-                                    modal.close(cx);
-                                },
-                            ))),
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(0.35 * theme::REM))
+                                    .child(self.version.clone())
+                                    .child(close_button("help-close").on_click(cx.listener(
+                                        |modal, _, _, cx| {
+                                            modal.close(cx);
+                                        },
+                                    ))),
+                            ),
                     )
                     .child(self.search.clone())
                     .child(content),

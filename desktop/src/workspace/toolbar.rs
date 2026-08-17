@@ -1,6 +1,7 @@
 use crate::platform;
 use crate::ui::UI_FONT;
 use crate::ui::assets::icon;
+use crate::ui::badge;
 use crate::ui::single_line_input::{FieldMetrics, FieldState, SingleLineInput, ValueChanged};
 use crate::ui::theme;
 use crate::ui::tooltip::TextTooltip;
@@ -37,6 +38,7 @@ pub struct Toolbar {
     window_title: Option<SharedString>,
     pinned: bool,
     help_open: bool,
+    update_announced: bool,
     blur_subscription: Option<Subscription>,
     press: Option<Press>,
     name_hovered: bool,
@@ -76,6 +78,7 @@ impl Toolbar {
             window_title: None,
             pinned: false,
             help_open: false,
+            update_announced: false,
             blur_subscription: None,
             press: None,
             name_hovered: false,
@@ -96,6 +99,14 @@ impl Toolbar {
     pub fn set_help_open(&mut self, open: bool, cx: &mut Context<Self>) {
         self.help_open = open;
         cx.notify();
+    }
+
+    /// Badges the help button, which is where an announced release is reachable.
+    pub fn set_update_announced(&mut self, announced: bool, cx: &mut Context<Self>) {
+        if self.update_announced != announced {
+            self.update_announced = announced;
+            cx.notify();
+        }
     }
 
     pub fn start_editing(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -318,10 +329,18 @@ impl Toolbar {
             )
             .child(
                 icon_button("toolbar-help", icon::HELP)
-                    .tooltip(tooltip(format!("Help ({MOD_KEY}?)")))
+                    .tooltip(tooltip(if self.update_announced {
+                        "An update is available".to_string()
+                    } else {
+                        format!("Help ({MOD_KEY}?)")
+                    }))
                     .when(self.help_open, |button| {
                         button.bg(theme::toolbar_hover_bg())
                     })
+                    .children(
+                        self.update_announced
+                            .then(|| badge::dot(theme::toolbar_bg())),
+                    )
                     .on_click(cx.listener(|toolbar, _: &ClickEvent, window, cx| {
                         if toolbar.window_moved(window) {
                             return;
@@ -405,6 +424,7 @@ fn icon_button(id: &'static str, path: &'static str) -> Stateful<Div> {
         .id(id)
         .group(id)
         .flex_none()
+        .relative()
         .size(px(theme::ICON_BUTTON_SIZE))
         .flex()
         .items_center()

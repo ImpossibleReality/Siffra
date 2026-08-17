@@ -355,6 +355,177 @@ pub fn toggle_active_bg() -> Rgba {
     rgba(0xffffff33)
 }
 
+/// The notification dot drawn over a control that has news behind it.
+pub const BADGE_SIZE: f32 = 7.0;
+pub const BADGE_INSET: f32 = 2.0;
+
+pub fn badge() -> Rgba {
+    rgb(0xe5484d)
+}
+
+pub const MENU_MIN_WIDTH: f32 = 7.0 * REM;
+pub const MENU_PADDING: f32 = 0.2 * REM;
+pub const MENU_FONT: f32 = 0.78 * REM;
+pub const MENU_LINE_HEIGHT: f32 = 1.15 * REM;
+pub const MENU_ITEM_PADDING_X: f32 = 0.45 * REM;
+pub const MENU_ITEM_PADDING_Y: f32 = 0.15 * REM;
+pub const MENU_ITEM_RADIUS: f32 = 0.25 * REM;
+pub const MENU_ITEM_GAP: f32 = 0.35 * REM;
+
+pub fn menu_status_text() -> Rgba {
+    rgb(0x6b7280)
+}
+
+pub fn menu_item_text() -> Rgba {
+    rgb(0xcdd4d7)
+}
+
+pub fn menu_item_hover_bg() -> Rgba {
+    rgba(0xffffff12)
+}
+
+pub fn menu_item_hover_text() -> Rgba {
+    rgb(0xffffff)
+}
+
+pub fn menu_check() -> Rgba {
+    rgb(0x90bee3)
+}
+
+pub const CHECKBOX_SIZE: f32 = 0.95 * REM;
+pub const CHECKBOX_RADIUS: f32 = 0.25 * REM;
+pub const CHECKBOX_GAP: f32 = 0.45 * REM;
+
+pub fn checkbox_border() -> Rgba {
+    rgb(0x4b5263)
+}
+
+pub fn checkbox_hover_border() -> Rgba {
+    rgb(0x6b7280)
+}
+
+pub fn checkbox_on_bg() -> Rgba {
+    rgb(0x90bee3)
+}
+
+pub fn checkbox_on_mark() -> Rgba {
+    rgb(0x1e2026)
+}
+
+pub fn checkbox_label() -> Rgba {
+    rgb(0x8a9196)
+}
+
+pub const BUTTON_PADDING_X: f32 = 0.9 * REM;
+pub const BUTTON_PADDING_Y: f32 = 0.4 * REM;
+pub const BUTTON_RADIUS: f32 = 0.35 * REM;
+
+pub fn button_text() -> Rgba {
+    rgb(0xa9aeb9)
+}
+
+pub fn button_hover_bg() -> Rgba {
+    rgba(0xffffff0f)
+}
+
+pub fn button_hover_text() -> Rgba {
+    rgb(0xe6ebee)
+}
+
+pub fn primary_button_bg() -> Rgba {
+    rgb(0x3f6d95)
+}
+
+pub fn primary_button_hover_bg() -> Rgba {
+    rgb(0x4d84b3)
+}
+
+pub fn primary_button_text() -> Rgba {
+    rgb(0xf2f6f8)
+}
+
+pub const MARKDOWN_BLOCK_GAP: f32 = 0.55 * REM;
+pub const MARKDOWN_RULE_MARGIN: f32 = 0.4 * REM;
+pub const MARKDOWN_QUOTE_BAR: f32 = 2.0;
+pub const MARKDOWN_INDENT: f32 = REM;
+
+pub fn markdown_text() -> Rgba {
+    rgb(0xa9b0b6)
+}
+
+pub fn markdown_heading() -> Rgba {
+    rgb(0xe6ebee)
+}
+
+pub fn markdown_code() -> Rgba {
+    rgb(0xdec4ab)
+}
+
+pub fn markdown_code_bg() -> Rgba {
+    rgba(0x0000002e)
+}
+
+pub fn markdown_code_border() -> Rgba {
+    rgb(0x33363f)
+}
+
+pub fn markdown_link() -> Rgba {
+    rgb(0x90bee3)
+}
+
+pub fn markdown_rule() -> Rgba {
+    rgb(0x2b2e36)
+}
+
+pub fn markdown_quote() -> Rgba {
+    rgb(0x4b5263)
+}
+
+pub const UPDATE_PANEL_WIDTH: f32 = 42.0 * REM;
+pub const UPDATE_PANEL_HEIGHT: f32 = 27.0 * REM;
+pub const UPDATE_SIDEBAR_WIDTH: f32 = 13.5 * REM;
+pub const UPDATE_APP_ICON_SIZE: f32 = 6.5 * REM;
+
+pub fn update_sidebar_bg() -> Rgba {
+    rgba(0x00000026)
+}
+
+pub fn update_divider() -> Rgba {
+    rgb(0x2b2e36)
+}
+
+pub fn update_app_name() -> Rgba {
+    rgb(0xe6ebee)
+}
+
+pub fn update_version() -> Rgba {
+    rgb(0x8a9196)
+}
+
+pub fn update_version_next() -> Rgba {
+    rgb(0x98c379)
+}
+
+pub const VERSION_BUTTON_PADDING_X: f32 = 0.5 * REM;
+pub const VERSION_BUTTON_PADDING_Y: f32 = 0.2 * REM;
+pub const VERSION_BUTTON_RADIUS: f32 = 0.3 * REM;
+
+pub fn version_button_text() -> Rgba {
+    rgb(0x8a9196)
+}
+
+pub fn version_button_hover_text() -> Rgba {
+    rgb(0xcdd4d7)
+}
+
+pub fn version_button_alert_text() -> Rgba {
+    rgb(0xe6ebee)
+}
+
+pub fn version_button_hover_bg() -> Rgba {
+    rgba(0xffffff0a)
+}
+
 /// Scales the type size with window width and rounds it to a tenth of a rem.
 pub fn font_size_for_window(window_width: Pixels) -> Pixels {
     let rems = (0.9 + (f32::from(window_width) - 300.0) / 800.0).clamp(0.9, 1.1);

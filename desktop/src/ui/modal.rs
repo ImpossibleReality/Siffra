@@ -20,9 +20,11 @@ impl ModalSize {
     }
 }
 
+/// The dimmed backdrop a modal sits on that occludes pointer events behind it
 pub fn overlay(id: impl Into<ElementId>) -> Stateful<Div> {
     div()
         .id(id)
+        .occlude()
         .absolute()
         .inset_0()
         .pt(px(3.0 * theme::REM))

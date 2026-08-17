@@ -5,8 +5,8 @@ use crate::editor::ShowCharacterPalette;
 use crate::platform;
 use crate::text::actions::{Copy, Cut, Paste, Redo, SelectAll, Undo};
 use crate::workspace::{
-    CheckForUpdates, InstallUpdate, NameDocument, NewDocument, ToggleAlwaysOnTop, ToggleHelp,
-    ToggleSearch, Workspace,
+    CheckForUpdates, NameDocument, NewDocument, ToggleAlwaysOnTop, ToggleHelp, ToggleSearch,
+    Workspace,
 };
 use gpui::{App, Menu, MenuItem, SystemMenuType, Window, actions};
 
@@ -88,7 +88,6 @@ pub fn app_menus() -> Vec<Menu> {
                 MenuItem::action("Siffra Help", ToggleHelp),
                 MenuItem::separator(),
                 MenuItem::action("Check for Updates…", CheckForUpdates),
-                MenuItem::action("Install Update…", InstallUpdate),
             ],
         },
     ]

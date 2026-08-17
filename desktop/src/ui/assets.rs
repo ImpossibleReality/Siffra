@@ -69,4 +69,8 @@ define_assets! {
         CHEVRON: "icons/chevron.svg",
         CLOSE: "icons/close.svg",
     }
+
+    image {
+        APP_ICON: "app_icons/128x128@2x.png",
+    }
 }

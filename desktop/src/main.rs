@@ -11,7 +11,7 @@ mod search;
 mod syntax;
 mod text;
 mod ui;
-mod updater;
+mod updates;
 mod workspace;
 
 fn main() {

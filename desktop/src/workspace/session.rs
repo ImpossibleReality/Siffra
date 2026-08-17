@@ -4,7 +4,7 @@ use crate::editor::layout::Fonts;
 use crate::editor::{ContentChanged, Editor};
 use crate::help::{CloseHelp, HelpModal};
 use crate::search::{SearchEvent, SearchModal};
-use crate::updater;
+use crate::updates::{Updates, UpdatesEvent};
 use gpui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, InteractiveElement, IntoElement,
     ParentElement, Render, Styled, Subscription, Task, Window, actions, div, px,
@@ -19,8 +19,7 @@ actions!(
         ToggleSearch,
         ToggleHelp,
         ToggleAlwaysOnTop,
-        CheckForUpdates,
-        InstallUpdate
+        CheckForUpdates
     ]
 );
 
@@ -39,8 +38,7 @@ pub struct Workspace {
     search_open: bool,
     unsaved: Option<String>,
     save_timer: Option<Task<()>>,
-    pending_update: Option<cargo_packager_updater::Update>,
-    update_task: Option<Task<()>>,
+    updates: Entity<Updates>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -48,13 +46,16 @@ impl Workspace {
     pub fn new(fonts: Fonts, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let mono_family = fonts.regular.family.clone();
         let toolbar = cx.new(Toolbar::new);
-        let help = cx.new(|cx| HelpModal::new(mono_family.clone(), cx));
+        let updates = cx.new(|cx| Updates::new(mono_family.clone(), window, cx));
+        let version = updates.read(cx).version();
+        let help = cx.new(|cx| HelpModal::new(mono_family.clone(), version.clone(), cx));
         let search = cx.new(|cx| SearchModal::new(mono_family, cx));
         let editor = cx.new(|cx| Editor::new("", fonts, cx));
 
         let subscriptions = vec![
             cx.subscribe_in(&toolbar, window, Self::on_toolbar_event),
             cx.subscribe_in(&search, window, Self::on_search_event),
+            cx.subscribe_in(&updates, window, Self::on_updates_event),
             cx.subscribe_in(&help, window, |workspace, _, _: &CloseHelp, window, cx| {
                 workspace.set_help_open(false, window, cx);
             }),
@@ -92,12 +93,17 @@ impl Workspace {
             search_open: false,
             unsaved: None,
             save_timer: None,
-            pending_update: None,
-            update_task: None,
+            updates,
             _subscriptions: subscriptions,
         };
 
         workspace.show_blank(cx);
+        if let Some(version) = workspace.updates.read(cx).launched_version() {
+            workspace.toast(format!("Updated to Siffra \"{version}\""), cx);
+        }
+        workspace
+            .updates
+            .update(cx, |updates, cx| updates.check_on_launch(window, cx));
         workspace
     }
 
@@ -389,56 +395,34 @@ impl Workspace {
             .update(cx, |editor, cx| editor.show_toast(message, cx));
     }
 
-    fn check_for_updates(&mut self, _: &CheckForUpdates, _: &mut Window, cx: &mut Context<Self>) {
-        if self.update_task.is_some() {
-            return;
+    fn on_updates_event(
+        &mut self,
+        _: &Entity<Updates>,
+        event: &UpdatesEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match event {
+            UpdatesEvent::StateChanged => {
+                let announced = self.updates.read(cx).update_announced();
+                self.toolbar.update(cx, |toolbar, cx| {
+                    toolbar.set_update_announced(announced, cx)
+                });
+                cx.notify();
+            }
+            UpdatesEvent::Toast(message) => self.toast(message.clone(), cx),
+            UpdatesEvent::ModalClosed => self.focus_frontmost(window, cx),
         }
-        self.toast("Checking for updates…", cx);
-        let work = cx.background_spawn(async { updater::check() });
-        self.update_task = Some(cx.spawn(async move |workspace, cx| {
-            let result = work.await;
-            workspace
-                .update(cx, |workspace, cx| {
-                    workspace.update_task = None;
-                    match result {
-                        Ok(Some(update)) => {
-                            let message = updater::summary(&update);
-                            workspace.pending_update = Some(update);
-                            workspace.toast(message, cx);
-                        }
-                        Ok(None) => workspace.toast("Siffra is up to date.", cx),
-                        Err(error) => {
-                            workspace.toast(format!("Could not check for updates: {error}"), cx)
-                        }
-                    }
-                })
-                .ok();
-        }));
     }
 
-    fn install_update(&mut self, _: &InstallUpdate, _: &mut Window, cx: &mut Context<Self>) {
-        let Some(update) = self.pending_update.take() else {
-            self.toast("Check for updates first.", cx);
-            return;
-        };
-        self.toast(format!("Installing Siffra {}…", update.version), cx);
-        let work = cx.background_spawn(async move { updater::install(&update) });
-        self.update_task = Some(cx.spawn(async move |workspace, cx| {
-            let result = work.await;
-            workspace
-                .update(cx, |workspace, cx| {
-                    workspace.update_task = None;
-                    match result {
-                        Ok(()) => {
-                            workspace.toast("Update installed. Restart Siffra to use it.", cx)
-                        }
-                        Err(error) => {
-                            workspace.toast(format!("Could not install the update: {error}"), cx)
-                        }
-                    }
-                })
-                .ok();
-        }));
+    fn check_for_updates(
+        &mut self,
+        _: &CheckForUpdates,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.updates
+            .update(cx, |updates, cx| updates.check_from_app_menu(window, cx));
     }
 }
 
@@ -453,7 +437,6 @@ impl Render for Workspace {
             .on_action(cx.listener(Self::toggle_help))
             .on_action(cx.listener(Self::toggle_always_on_top))
             .on_action(cx.listener(Self::check_for_updates))
-            .on_action(cx.listener(Self::install_update))
             .child(
                 div()
                     .size_full()
@@ -464,12 +447,20 @@ impl Render for Workspace {
             )
             .children(self.help_open.then(|| self.help.clone()))
             .children(self.search_open.then(|| self.search.clone()))
+            .children(self.updates.read(cx).open_modal())
     }
 }
 
 impl Focusable for Workspace {
     fn focus_handle(&self, cx: &App) -> FocusHandle {
-        if self.search_open {
+        if self.updates.read(cx).modal_is_open() {
+            self.updates
+                .read(cx)
+                .open_modal()
+                .expect("an open update modal exists")
+                .read(cx)
+                .focus_handle(cx)
+        } else if self.search_open {
             self.search.read(cx).focus_handle(cx)
         } else if self.help_open {
             self.help.read(cx).focus_handle(cx)
