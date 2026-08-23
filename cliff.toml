@@ -80,15 +80,15 @@ commit_preprocessors = [
 # Assigns commits to groups.
 # Optionally sets the commit's scope and can decide to exclude commits from further processing.
 commit_parsers = [
-  { message = "^feat", group = "⛰️  Features" },
-  { message = "^fix", group = "🐛 Bug Fixes" },
-  { message = "^perf", group = "⚡ Performance" },
+  { message = "^feat", group = "<!-- 0 -->⛰️  Features" },
+  { message = "^fix", group = "<!-- 4 -->🐛 Bug Fixes" },
+  { message = "^perf", group = "<!-- 3 -->⚡ Performance" },
   { message = "^doc", skip = true },
   { message = "^refactor", skip = true },
   { message = "^test", skip = true },
   { message = "^chore|^ci", skip = true },
-  { body = ".*security", group = "🛡️ Security" },
-  { message = "^revert", group = "◀️ Revert" },
+  { body = ".*security", group = "<!-- 2 -->🛡️ Security" },
+  { message = "^revert", group = "<!-- 1 -->◀️ Revert" },
 ]
 # Prevent commits that are breaking from being excluded by commit parsers.
 protect_breaking_commits = false
