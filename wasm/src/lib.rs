@@ -1,7 +1,4 @@
 //! Browser bindings for the Siffra engine, backing the demo on the website.
-//!
-//! A document is evaluated in one call that returns, per line, the syntax spans the editor paints
-//! and the result the editor shows in its right-hand column.
 
 use serde::Serialize;
 use siffra::evaluation::{SiffraState, evaluate_line};
@@ -12,8 +9,6 @@ use siffra::representations::{
 };
 use wasm_bindgen::prelude::*;
 
-/// A run of characters painted as one token. `token` is `null` for the text between spans, so the
-/// segments of a line concatenate back into the line itself.
 #[derive(Serialize)]
 struct Segment {
     token: Option<&'static str>,
