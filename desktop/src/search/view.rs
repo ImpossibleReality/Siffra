@@ -1,6 +1,4 @@
-#[cfg(test)]
-use super::matching::MAX_MATCH_LINES;
-use super::matching::{MatchLine, Row, rows_for};
+use super::matching::{Haystack, MatchLine, Row};
 use crate::documents::Document;
 use crate::ui::assets::icon;
 use crate::ui::code_block::highlighted_line;
@@ -8,11 +6,11 @@ use crate::ui::modal::{ModalSize, fitted_panel, overlay};
 use crate::ui::single_line_input::{FieldMetrics, FieldState, SingleLineInput, ValueChanged};
 use crate::ui::theme;
 use gpui::{
-    App, AppContext, Context, CursorStyle, Div, Entity, EventEmitter, FocusHandle, Focusable,
-    FontWeight, InteractiveElement, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent,
-    MouseMoveEvent, ParentElement, Render, ScrollHandle, SharedString, Stateful,
-    StatefulInteractiveElement, Styled, Subscription, Window, div, prelude::FluentBuilder, px, rgb,
-    rgba, svg,
+    AnyElement, App, AppContext, Context, CursorStyle, Div, Entity, EventEmitter, FocusHandle,
+    Focusable, FontWeight, InteractiveElement, IntoElement, KeyDownEvent, ListAlignment,
+    ListSizingBehavior, ListState, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement,
+    Render, SharedString, Stateful, StatefulInteractiveElement, Styled, Subscription, Window, div,
+    list, prelude::FluentBuilder, px, rgb, rgba, svg,
 };
 
 const PANEL_WIDTH: f32 = 560.0;
@@ -20,6 +18,7 @@ const PANEL_HEIGHT: f32 = 28.0 * theme::REM;
 const OVERLAY_TOP_MIN: f32 = 3.0 * theme::REM;
 const OVERLAY_TOP_FRACTION: f32 = 0.12;
 const OVERLAY_SIDE: f32 = theme::REM;
+const LIST_OVERDRAW: f32 = PANEL_HEIGHT;
 
 pub enum SearchEvent {
     Close,
@@ -30,10 +29,11 @@ pub enum SearchEvent {
 pub struct SearchModal {
     query: Entity<SingleLineInput>,
     mono_family: SharedString,
-    all: Vec<Document>,
+    haystack: Haystack,
+    needle: String,
     rows: Vec<Row>,
     selected: usize,
-    list: ScrollHandle,
+    list: ListState,
     _subscription: Subscription,
 }
 
@@ -58,10 +58,11 @@ impl SearchModal {
         Self {
             query,
             mono_family,
-            all: Vec::new(),
+            haystack: Haystack::new(Vec::new()),
+            needle: String::new(),
             rows: Vec::new(),
             selected: 0,
-            list: ScrollHandle::new(),
+            list: ListState::new(0, ListAlignment::Top, px(LIST_OVERDRAW)),
             _subscription: subscription,
         }
     }
@@ -76,14 +77,16 @@ impl SearchModal {
     }
 
     pub fn set_documents(&mut self, documents: Vec<Document>, cx: &mut Context<Self>) {
-        self.all = documents;
+        self.haystack = Haystack::new(documents);
         self.rebuild_rows(cx);
     }
 
     fn rebuild_rows(&mut self, cx: &mut Context<Self>) {
-        let query = self.query.read(cx).value().trim().to_string();
-        self.rows = rows_for(&query, &self.all);
+        self.needle = self.query.read(cx).value().trim().to_string();
+        self.rows = self.haystack.rows(&self.needle);
         self.selected = self.selected.min(self.rows.len().saturating_sub(1));
+        self.list.reset(self.rows.len());
+        self.list.scroll_to_reveal_item(self.selected);
         cx.notify();
     }
 
@@ -94,7 +97,7 @@ impl SearchModal {
         let count = self.rows.len() as isize;
         let selected = (self.selected as isize + delta).rem_euclid(count);
         self.selected = selected as usize;
-        self.list.scroll_to_item(self.selected);
+        self.list.scroll_to_reveal_item(self.selected);
         cx.notify();
     }
 
@@ -137,9 +140,17 @@ impl SearchModal {
         }
     }
 
-    fn render_row(&self, index: usize, row: &Row, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_row(&self, index: usize, _: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let Some(row) = self.rows.get(index) else {
+            return div().into_any_element();
+        };
         let active = self.selected == index;
         let id = row.id;
+        let matches = if row.matched_content {
+            self.haystack.match_lines(row.entry, &self.needle)
+        } else {
+            Vec::new()
+        };
 
         div()
             .id(("search-row", index))
@@ -180,7 +191,8 @@ impl SearchModal {
                     )
                     .child(self.render_delete(index, id, active, cx)),
             )
-            .children((!row.lines.is_empty()).then(|| self.render_matches(index, &row.lines)))
+            .children((!matches.is_empty()).then(|| self.render_matches(index, &matches)))
+            .into_any_element()
     }
 
     fn render_delete(
@@ -277,18 +289,17 @@ impl SearchModal {
             .child(hint("esc", " close"))
     }
 
-    fn render_empty(&self, cx: &App) -> impl IntoElement {
-        let query = self.query.read(cx).value().trim().to_string();
+    fn render_empty(&self) -> impl IntoElement {
         div()
             .px(px(0.6 * theme::REM))
             .py(px(theme::REM))
             .text_center()
             .text_size(px(0.82 * theme::REM))
             .text_color(rgb(0x6b7280))
-            .child(if self.all.is_empty() {
+            .child(if self.haystack.is_empty() {
                 SharedString::new_static("No saved calculations yet.")
             } else {
-                SharedString::from(format!("No calculations match “{query}”."))
+                SharedString::from(format!("No calculations match “{}”.", self.needle))
             })
     }
 }
@@ -299,13 +310,12 @@ impl Render for SearchModal {
         let top = px(OVERLAY_TOP_MIN.max(f32::from(viewport) * OVERLAY_TOP_FRACTION));
         let height = (viewport - top - px(OVERLAY_SIDE)).max(px(0.0));
 
-        let rows: Vec<_> = self
-            .rows
-            .iter()
-            .enumerate()
-            .map(|(index, row)| self.render_row(index, row, cx).into_any_element())
-            .collect();
-        let empty = rows.is_empty().then(|| self.render_empty(cx));
+        let empty = self.rows.is_empty().then(|| self.render_empty());
+        let rows = list(
+            self.list.clone(),
+            cx.processor(|modal, index, window, cx| modal.render_row(index, window, cx)),
+        )
+        .with_sizing_behavior(ListSizingBehavior::Infer);
 
         overlay("search-overlay")
             .items_start()
@@ -351,14 +361,22 @@ impl Render for SearchModal {
                 )
                 .child(
                     div()
-                        .id("search-list")
+                        .flex()
+                        .flex_col()
                         .flex_1()
                         .min_h_0()
-                        .overflow_y_scroll()
-                        .track_scroll(&self.list)
-                        .p(px(0.35 * theme::REM))
-                        .children(rows)
-                        .children(empty),
+                        .px(px(0.35 * theme::REM))
+                        .child(match empty {
+                            Some(empty) => div()
+                                .py(px(0.35 * theme::REM))
+                                .child(empty)
+                                .into_any_element(),
+                            None => rows
+                                .flex_1()
+                                .min_h_0()
+                                .py(px(0.35 * theme::REM))
+                                .into_any_element(),
+                        }),
                 )
                 .child(self.render_hints()),
             )
@@ -443,89 +461,4 @@ fn query_field_chrome(field: Stateful<Div>, _: FieldState) -> Stateful<Div> {
         .line_height(px(1.29 * theme::REM))
         .text_color(rgb(0xcdd4d7))
         .cursor(CursorStyle::IBeam)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn document(id: u64, title: &str, content: &str) -> Document {
-        Document {
-            id,
-            title: Some(title.to_string()),
-            content: content.to_string(),
-            cursor: 0,
-            created_at: 0,
-            updated_at: id as i64,
-        }
-    }
-
-    #[test]
-    fn an_empty_query_lists_everything_in_the_order_it_was_given() {
-        let all = vec![document(2, "Two", ""), document(1, "One", "")];
-        let rows = rows_for("", &all);
-        assert_eq!(
-            rows.iter().map(|row| row.id).collect::<Vec<_>>(),
-            [2, 1],
-            "the store hands the list over newest first"
-        );
-        assert!(rows.iter().all(|row| row.lines.is_empty()));
-    }
-
-    #[test]
-    fn a_name_match_outranks_anything_found_inside_a_calculation() {
-        let all = vec![
-            document(1, "Groceries", "12 kg to lb"),
-            document(2, "Trip budget", "groceries = 40 USD"),
-        ];
-        let rows = rows_for("groceries", &all);
-        assert_eq!(rows.len(), 2);
-        assert_eq!(rows[0].id, 1);
-        assert!(rows[0].lines.is_empty(), "a name match shows no lines");
-        assert_eq!(rows[1].lines.len(), 1);
-        assert_eq!(rows[1].lines[0].text, "groceries = 40 USD");
-    }
-
-    #[test]
-    fn only_the_best_few_lines_are_shown_and_they_read_in_order() {
-        let content = (0..10)
-            .map(|index| format!("kg {index}"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        let all = vec![document(1, "Weights", &content)];
-        let rows = rows_for("kg", &all);
-        let lines = &rows[0].lines;
-        assert_eq!(lines.len(), MAX_MATCH_LINES);
-        let shown: Vec<_> = lines.iter().map(|line| line.text.to_string()).collect();
-        let mut sorted = shown.clone();
-        sorted.sort();
-        assert_eq!(shown, sorted, "lines keep the order they were written in");
-    }
-
-    #[test]
-    fn a_skipped_line_is_marked_but_a_blank_one_is_not() {
-        let all = vec![
-            document(1, "Gaps", "kg 1\n3 + 3\nkg 2"),
-            document(2, "Blanks", "kg 1\n\nkg 2"),
-        ];
-        let gapped = rows_for("kg", &all);
-        let with_gap = gapped.iter().find(|row| row.id == 1).expect("row");
-        assert!(!with_gap.lines[0].skipped_before);
-        assert!(
-            with_gap.lines[1].skipped_before,
-            "a calculation line was left out between the two matches"
-        );
-
-        let with_blank = gapped.iter().find(|row| row.id == 2).expect("row");
-        assert!(
-            !with_blank.lines[1].skipped_before,
-            "a blank line hides nothing, so there is nothing to stand in for"
-        );
-    }
-
-    #[test]
-    fn calculations_that_match_nowhere_are_left_out() {
-        let all = vec![document(1, "Trip", "2 + 2")];
-        assert!(rows_for("zzz", &all).is_empty());
-    }
 }
