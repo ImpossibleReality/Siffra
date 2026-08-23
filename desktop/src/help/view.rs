@@ -779,14 +779,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn overview_matches_legacy_shape() {
-        assert_eq!(OVERVIEW.len(), 6);
+    fn overview_keeps_its_shape() {
+        assert_eq!(OVERVIEW.len(), 7);
         assert_eq!(
             OVERVIEW
                 .iter()
                 .map(|category| category.entries.len())
                 .sum::<usize>(),
-            17
+            22
         );
     }
 }

@@ -5,10 +5,11 @@
 //! and `9:00` is a wall clock rather than a bare `9`. Callers get that by
 //! trying these parsers ahead of the numeric atom.
 
+use super::Span;
+use super::lexical::{Boxed, to_span};
 use super::representation::{
     ParsedDate, ParsedDimension, ParsedExpr, ParsedInstant, ParsedTime, ParsedUnit,
 };
-use super::{Boxed, Span, to_span};
 use crate::representations::{InstantKeyword, TimeZone};
 use chumsky::prelude::*;
 

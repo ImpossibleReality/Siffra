@@ -78,6 +78,55 @@ fn evaluate_ladder(
     Ok(converted.with_ladder(units.to_vec()))
 }
 
+/// A mixed calendar duration shifts one rung at a time. This is deliberately
+/// evaluated from `Value`s so a literal, a variable and a nested expression
+/// all have the same behavior.
+fn temporal_ladder_shift(point: &Value, duration: &Value, subtract: bool) -> Option<Option<Value>> {
+    if !point.dimension().is_temporal_point() || !duration.dimension().is_duration() {
+        return None;
+    }
+    let units = duration.display().ladder.as_deref()?;
+    if !ladder::has_calendar_rung(units) {
+        return None;
+    }
+    let rungs = match ladder::shift_rungs(
+        &duration.value(),
+        &duration.dimension(),
+        duration.basis(),
+        units,
+    ) {
+        Some(rungs) => rungs,
+        None => return Some(None),
+    };
+
+    Some(
+        rungs
+            .into_iter()
+            .try_fold(point.clone(), |point, (amount, unit)| {
+                let rung = Value::new(amount, Some(ladder::rung_dimension(&unit)));
+                if subtract {
+                    point.try_sub(&rung)
+                } else {
+                    point.try_add(&rung)
+                }
+            }),
+    )
+}
+
+fn add_values(a: &Value, b: &Value) -> Option<Value> {
+    if let Some(result) = temporal_ladder_shift(a, b, false) {
+        return result;
+    }
+    if let Some(result) = temporal_ladder_shift(b, a, false) {
+        return result;
+    }
+    a.try_add(b)
+}
+
+fn subtract_values(a: &Value, b: &Value) -> Option<Value> {
+    temporal_ladder_shift(a, b, true).unwrap_or_else(|| a.try_sub(b))
+}
+
 pub fn evaluate_expr(
     expr: &Expression,
     state: &SiffraState,
@@ -183,7 +232,7 @@ pub fn evaluate_expr(
             let a = evaluate_expr(a, state)?;
             let b = evaluate_expr(b, state)?;
             Ok(siffra_try!(
-                a.try_add(&b).ok_or(()),
+                add_values(&a, &b).ok_or(()),
                 "Unit Error",
                 format!("Cannot add {} and {}", value_unit(&a), value_unit(&b)),
                 expr.span()
@@ -193,7 +242,7 @@ pub fn evaluate_expr(
             let a = evaluate_expr(a, state)?;
             let b = evaluate_expr(b, state)?;
             Ok(siffra_try!(
-                a.try_sub(&b).ok_or(()),
+                subtract_values(&a, &b).ok_or(()),
                 "Unit Error",
                 format!("Cannot subtract {} and {}", value_unit(&a), value_unit(&b)),
                 expr.span()

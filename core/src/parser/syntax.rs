@@ -1,7 +1,7 @@
-use super::{
-    KNOWN_FUNCS, ParsedDimension, ParsedExpr, ParsedLine, ParsedUnit, Span, UNIT_EXCLUDE,
-    chemical_parser, number_parser, parse_line,
-};
+use super::grammar::KNOWN_FUNCS;
+use super::lexical::{chemical_parser, number_parser};
+use super::units::UNIT_EXCLUDE;
+use super::{ParsedDimension, ParsedExpr, ParsedLine, ParsedUnit, Span, parse_line};
 use chumsky::prelude::*;
 use std::ops::Range;
 
@@ -43,7 +43,7 @@ struct LexToken {
 
 const OPERATOR_WORDS: &[&str] = &[
     "divided", "divide", "plus", "minus", "times", "of", "over", "by", "in", "as", "to", "into",
-    "let", "on", "off", "what", "is",
+    "let", "on", "off", "what", "is", "after", "before", "from",
 ];
 
 const OPERATOR_SYMBOLS: &str = "=+-*/^%[]!#";
@@ -559,6 +559,15 @@ mod tests {
             render("1.87 m to ft,in"),
             "<Number>1.87</Number> <Unit>m</Unit> <Operation>to</Operation> \
              <Unit>ft</Unit>,<Unit>in</Unit>"
+        );
+    }
+
+    #[test]
+    fn marks_written_calendar_shifts_as_operations() {
+        assert_eq!(
+            render("2 months 3 days after June 5"),
+            "<Number>2</Number> <Unit>months</Unit> <Number>3</Number> <Unit>days</Unit> \
+             <Operation>after</Operation> <Number>June 5</Number>"
         );
     }
 

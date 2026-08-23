@@ -165,6 +165,90 @@ pub const OVERVIEW: &[OverviewCategory] = &[
             ],
         },
     ]),
+    category!("Dates & times" => [
+        "Dates" {
+            description: "Write a date numerically or with a month name, in either order. A named month may drop its year, and then means the next time that date comes around. “today”, “tomorrow”, “yesterday”, and “now” read from the clock.",
+            keywords: [
+                "date",
+                "calendar",
+                "day",
+                "month",
+                "year",
+                "today",
+                "tomorrow",
+                "yesterday",
+                "now",
+            ],
+            examples: [
+                "feb 11, 2026" => "02-11-2026",
+                "11 feb 2026" => "02-11-2026",
+                "2/11/26" => "02-11-2026",
+                "dec 1",
+                "today",
+            ],
+        },
+        "Times of day" {
+            description: "Clock times can be 12- or 24-hour, with or without seconds. A date and a time go together in either order.",
+            keywords: ["time", "clock", "hour", "minute", "am", "pm", "24-hour"],
+            examples: [
+                "5:00p" => "5:00 PM",
+                "17:20" => "5:20 PM",
+                "5:00p on feb 2, 2026" => "02-02-2026 5:00 PM",
+            ],
+        },
+        "Time zones" {
+            description: "Name a zone after a time — an abbreviation, an IANA name, or a ±HH:MM offset — and move between zones with “in” or “to”. A time without one belongs to your own zone.",
+            keywords: [
+                "timezone",
+                "zone",
+                "utc",
+                "pst",
+                "est",
+                "offset",
+                "iana",
+            ],
+            examples: [
+                "feb 2 2026 5pm UTC" => "02-02-2026 5:00 PM UTC",
+                "5pm EST to PST" => "2:00 PM PST",
+                "9:00 in Europe/Stockholm",
+            ],
+        },
+        "Shift a date or time" {
+            description: "Add or subtract a duration, or write the shift out with “after”, “before”, or “from now”. Calendar amounts like months land on a real day.",
+            keywords: [
+                "add",
+                "subtract",
+                "after",
+                "before",
+                "from now",
+                "shift",
+                "duration",
+            ],
+            examples: [
+                "2024-01-31 + 1 month" => "02-29-2024",
+                "3 weeks after March 14, 2019" => "04-04-2019",
+                "5:00p - 30 min" => "4:30 PM",
+            ],
+        },
+        "Time between two points" {
+            description: "“to” between two dates or times measures the stretch between them, which converts like any other value. start, midpoint, and end pick a point back out of it.",
+            keywords: [
+                "between",
+                "range",
+                "span",
+                "elapsed",
+                "duration",
+                "difference",
+                "to",
+            ],
+            examples: [
+                "9:00 to 17:00" => "8 h",
+                "2024-02-10 to 2024-03-10" => "1 month / 29 days / 696 hours",
+                "2024-02-10 to 2024-03-10 -> day" => "29 d",
+                "midpoint(2024-02-10 to 2024-03-10)" => "02-24-2024 12:00 PM",
+            ],
+        },
+    ]),
     category!("Molar Mass Conversions" => [
         "Grams to moles of a compound" {
             description: "Tag a mass with a chemical formula and convert it to an amount of substance — Siffra looks up the molar mass from the periodic table.",

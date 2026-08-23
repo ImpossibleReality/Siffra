@@ -189,6 +189,61 @@ pub fn decompose(
     exact(value, dimension, units)
 }
 
+/// Splits an unanchored duration into the exact rungs used to shift a calendar.
+/// Unlike display decomposition, the last rung is not rounded: these amounts
+/// participate in evaluation rather than presentation.
+pub fn shift_rungs(
+    value: &Float,
+    dimension: &Dimension,
+    basis: Option<&Basis>,
+    units: &[Unit],
+) -> Option<Vec<(Float, Unit)>> {
+    if validate(units).is_err() {
+        return None;
+    }
+
+    if let Some((start, end)) = basis.and_then(Basis::anchors)
+        && let Some(decomposition) = anchored(start, end, units)
+    {
+        return Some(signed_rungs(decomposition));
+    }
+
+    let factors = units
+        .iter()
+        .map(Unit::factor)
+        .collect::<Option<Vec<Float>>>()?;
+    let negative = *value < Float::from(0);
+    let mut remaining = (value * &dimension.factor()?).abs();
+    let mut amounts = Vec::with_capacity(units.len());
+
+    for factor in &factors[..factors.len() - 1] {
+        let whole = (&remaining / factor).floor();
+        remaining = &remaining - &(&whole * factor);
+        amounts.push(whole);
+    }
+    amounts.push(&remaining / factors.last().expect("a validated ladder has rungs"));
+
+    Some(signed_rungs(Decomposition {
+        negative,
+        rungs: amounts.into_iter().zip(units.iter().cloned()).collect(),
+    }))
+}
+
+fn signed_rungs(decomposition: Decomposition) -> Vec<(Float, Unit)> {
+    decomposition
+        .rungs
+        .into_iter()
+        .map(|(amount, unit)| {
+            let amount = if decomposition.negative {
+                -amount
+            } else {
+                amount
+            };
+            (amount, unit)
+        })
+        .collect()
+}
+
 /// Ratios alone: a day is 86,400 s and a month is its mean length, which is
 /// what a duration without endpoints means.
 fn exact(value: &Float, dimension: &Dimension, units: &[Unit]) -> Option<Decomposition> {

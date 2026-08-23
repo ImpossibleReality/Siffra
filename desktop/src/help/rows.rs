@@ -219,7 +219,7 @@ mod tests {
             rows.iter()
                 .filter(|row| matches!(row, HelpRow::OverviewEntry(_)))
                 .count(),
-            17
+            22
         );
     }
 

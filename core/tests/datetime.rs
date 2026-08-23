@@ -37,6 +37,29 @@ fn one(line: &str) -> String {
     run(line).pop().expect("one line of output")
 }
 
+fn run_utc(block: &str) -> Vec<String> {
+    let zone = TimeZone::utc();
+    let now = date(2026, 8, 8)
+        .at(14, 32, 7, 0)
+        .to_zoned(zone.inner().clone())
+        .expect("a real wall clock time");
+    let mut state = SiffraState::in_timezone(zone.clone());
+    state.set_now(now);
+
+    block
+        .lines()
+        .map(|line| match evaluate_line(line, &mut state) {
+            Ok(Some(value)) => format_value(&value, Some(&zone)).to_plain_string(),
+            Ok(None) => "<none>".to_string(),
+            Err(error) => format!("ERR: {}", error.message()),
+        })
+        .collect()
+}
+
+fn one_utc(line: &str) -> String {
+    run_utc(line).pop().expect("one line of output")
+}
+
 #[test]
 fn instant_literals_and_timezone_relabeling() {
     assert_eq!(one("2024-02-10"), "02-10-2024");
@@ -140,6 +163,44 @@ fn calendar_addition_clamps_and_keeps_the_wall_clock() {
     assert_eq!(one("2024-03-09 12:00 + 1 day"), "03-10-2024 12:00 PM");
     assert_eq!(one("now + 3 weeks"), "08-29-2026 2:32:07 PM");
     assert_eq!(one("today - 90 days"), "05-10-2026");
+}
+
+#[test]
+fn written_calendar_shifts_work_from_dates_times_and_now() {
+    assert_eq!(one_utc("3 weeks after March 14, 2019"), "04-04-2019");
+    assert_eq!(one_utc("28 days before March 12"), "02-12-2027");
+    assert_eq!(one_utc("2 months 3 days after June 5"), "08-08-2027");
+    assert_eq!(one_utc("2 weeks from now"), "08-22-2026 2:32:07 PM");
+    assert_eq!(one_utc("90 min after 5:00 PM"), "6:30 PM");
+}
+
+#[test]
+fn mixed_calendar_shifts_are_consistent_after_evaluation() {
+    assert_eq!(
+        run_utc(
+            "x = 2 mo 2 d\n\
+             x after today\n\
+             today + x\n\
+             2 mo 2 d after today\n\
+             today + 2 mo 2 d"
+        ),
+        vec![
+            "2 mo 2 d".to_string(),
+            "10-10-2026".to_string(),
+            "10-10-2026".to_string(),
+            "10-10-2026".to_string(),
+            "10-10-2026".to_string(),
+        ]
+    );
+    assert_eq!(one_utc("2024-01-30 + 1 month 2 days"), "03-02-2024");
+    assert_eq!(one_utc("2 months 2 days before today"), "06-06-2026");
+    assert_eq!(
+        run_utc(
+            "span = 2024-02-10 to 2024-03-10 -> month,day\n\
+             2024-01-30 + span"
+        ),
+        vec!["1 mo 0 d".to_string(), "02-29-2024".to_string()]
+    );
 }
 
 #[test]

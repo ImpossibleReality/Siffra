@@ -15,8 +15,7 @@ impl Granularity {
     }
 }
 
-/// Advisory rendering hints. Dropping them never changes what a value means,
-/// so any operation that cannot propagate a hint may simply omit it.
+/// Rendering metadata retained with a value.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct DisplayHints {
     /// Temporal points only: how much of the reading to show.
@@ -26,7 +25,8 @@ pub struct DisplayHints {
     pub span_readings: bool,
     /// Largest-to-smallest units of one dimensionality to split the value
     /// across, as `5 ft 2 in` splits one length. Unlike `span_readings`, whose
-    /// entries are alternative totals, these rungs sum to the value.
+    /// entries are alternative totals, these rungs sum to the value. Calendar
+    /// shifts also apply these rungs in order.
     pub ladder: Option<Vec<Unit>>,
     /// The value came from a division and may be a recurring decimal.
     pub repeating_candidate: bool,
