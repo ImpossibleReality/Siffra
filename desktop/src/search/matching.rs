@@ -6,6 +6,8 @@ use std::cmp::Reverse;
 
 pub(super) const MAX_MATCH_LINES: usize = 4;
 
+const DAY: i64 = 24 * 60 * 60 * 1000;
+
 pub(super) struct MatchLine {
     pub(super) text: SharedString,
     /// Whether non-empty lines were skipped before this match.
@@ -29,6 +31,8 @@ struct Entry {
     lowercase_content: String,
     title_mask: u32,
     mask: u32,
+    /// Never named and last touched over a day ago: clutter until searched for.
+    stale_unnamed: bool,
 }
 
 impl Entry {
@@ -61,6 +65,7 @@ impl Haystack {
                 let title_mask = fuzzy::mask(&lowercase_title);
                 Entry {
                     id: document.id,
+                    stale_unnamed: document.title.is_none() && now - document.updated_at >= DAY,
                     title: SharedString::from(title),
                     edited: SharedString::from(relative_time(document.updated_at, now)),
                     mask: title_mask | fuzzy::mask(&lowercase_content),
@@ -79,12 +84,16 @@ impl Haystack {
         self.entries.is_empty()
     }
 
-    pub(super) fn rows(&self, query: &str) -> Vec<Row> {
+    /// Lists the saved calculations, or the ones matching `query`. With no
+    /// query the unnamed calculations older than a day are left out unless
+    /// `show_unnamed` asks for them; a query always searches everything.
+    pub(super) fn rows(&self, query: &str, show_unnamed: bool) -> Vec<Row> {
         if query.is_empty() {
             return self
                 .entries
                 .iter()
                 .enumerate()
+                .filter(|(_, entry)| show_unnamed || !entry.stale_unnamed)
                 .map(|(index, entry)| entry.row(index, false))
                 .collect();
         }
@@ -180,6 +189,17 @@ mod tests {
         }
     }
 
+    fn unnamed(id: u64, updated_at: i64, content: &str) -> Document {
+        Document {
+            id,
+            title: None,
+            content: content.to_string(),
+            cursor: 0,
+            created_at: updated_at,
+            updated_at,
+        }
+    }
+
     fn haystack(documents: Vec<Document>) -> Haystack {
         Haystack::new(documents)
     }
@@ -195,7 +215,7 @@ mod tests {
     #[test]
     fn an_empty_query_lists_everything_in_the_order_it_was_given() {
         let all = haystack(vec![document(2, "Two", ""), document(1, "One", "")]);
-        let rows = all.rows("");
+        let rows = all.rows("", false);
         assert_eq!(
             rows.iter().map(|row| row.id).collect::<Vec<_>>(),
             [2, 1],
@@ -210,7 +230,7 @@ mod tests {
             document(1, "Groceries", "12 kg to lb"),
             document(2, "Trip budget", "groceries = 40 USD"),
         ]);
-        let rows = all.rows("groceries");
+        let rows = all.rows("groceries", false);
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0].id, 1);
         assert!(
@@ -229,7 +249,7 @@ mod tests {
             .collect::<Vec<_>>()
             .join("\n");
         let all = haystack(vec![document(1, "Weights", &content)]);
-        let rows = all.rows("kg");
+        let rows = all.rows("kg", false);
         let found = lines(&all, &rows[0], "kg");
         assert_eq!(found.len(), MAX_MATCH_LINES);
         let shown: Vec<_> = found.iter().map(|line| line.text.to_string()).collect();
@@ -244,7 +264,7 @@ mod tests {
             document(1, "Gaps", "kg 1\n3 + 3\nkg 2"),
             document(2, "Blanks", "kg 1\n\nkg 2"),
         ]);
-        let rows = all.rows("kg");
+        let rows = all.rows("kg", false);
 
         let gapped = rows.iter().find(|row| row.id == 1).expect("row");
         let gapped = lines(&all, gapped, "kg");
@@ -265,19 +285,52 @@ mod tests {
     #[test]
     fn calculations_that_match_nowhere_are_left_out() {
         let all = haystack(vec![document(1, "Trip", "2 + 2")]);
-        assert!(all.rows("zzz").is_empty());
+        assert!(all.rows("zzz", false).is_empty());
     }
 
     #[test]
     fn matching_lines_keep_the_case_they_were_written_in() {
         let all = haystack(vec![document(1, "Trip", "Budget = 40 USD")]);
-        let rows = all.rows("budget");
+        let rows = all.rows("budget", false);
         assert_eq!(lines(&all, &rows[0], "budget")[0].text, "Budget = 40 USD");
     }
 
     #[test]
     fn a_document_is_listed_once_however_many_lines_match() {
         let all = haystack(vec![document(1, "Trip", "kg 1\nkg 2\nkg 3")]);
-        assert_eq!(all.rows("kg").len(), 1);
+        assert_eq!(all.rows("kg", false).len(), 1);
+    }
+
+    #[test]
+    fn unnamed_calculations_older_than_a_day_are_left_out_of_the_plain_listing() {
+        let now = now_millis();
+        let all = haystack(vec![
+            unnamed(1, now, "fresh"),
+            unnamed(2, now - 2 * DAY, "old"),
+            document(3, "Named", "old but named"),
+        ]);
+
+        assert_eq!(
+            all.rows("", false)
+                .iter()
+                .map(|row| row.id)
+                .collect::<Vec<_>>(),
+            [1, 3],
+        );
+        assert_eq!(
+            all.rows("", true)
+                .iter()
+                .map(|row| row.id)
+                .collect::<Vec<_>>(),
+            [1, 2, 3],
+            "asking for them brings the older unnamed ones back"
+        );
+    }
+
+    #[test]
+    fn a_query_searches_the_older_unnamed_calculations_too() {
+        let now = now_millis();
+        let all = haystack(vec![unnamed(1, now - 30 * DAY, "12 kg to lb")]);
+        assert_eq!(all.rows("kg", false).len(), 1);
     }
 }

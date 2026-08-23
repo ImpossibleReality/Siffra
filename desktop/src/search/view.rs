@@ -1,6 +1,7 @@
 use super::matching::{Haystack, MatchLine, Row};
 use crate::documents::Document;
 use crate::ui::assets::icon;
+use crate::ui::checkbox::checkbox;
 use crate::ui::code_block::highlighted_line;
 use crate::ui::modal::{ModalSize, fitted_panel, overlay};
 use crate::ui::single_line_input::{FieldMetrics, FieldState, SingleLineInput, ValueChanged};
@@ -32,6 +33,8 @@ pub struct SearchModal {
     haystack: Haystack,
     needle: String,
     rows: Vec<Row>,
+    /// Whether the listing keeps the unnamed calculations older than a day.
+    show_unnamed: bool,
     selected: usize,
     list: ListState,
     _subscription: Subscription,
@@ -61,6 +64,7 @@ impl SearchModal {
             haystack: Haystack::new(Vec::new()),
             needle: String::new(),
             rows: Vec::new(),
+            show_unnamed: false,
             selected: 0,
             list: ListState::new(0, ListAlignment::Top, px(LIST_OVERDRAW)),
             _subscription: subscription,
@@ -83,11 +87,17 @@ impl SearchModal {
 
     fn rebuild_rows(&mut self, cx: &mut Context<Self>) {
         self.needle = self.query.read(cx).value().trim().to_string();
-        self.rows = self.haystack.rows(&self.needle);
+        self.rows = self.haystack.rows(&self.needle, self.show_unnamed);
         self.selected = self.selected.min(self.rows.len().saturating_sub(1));
         self.list.reset(self.rows.len());
         self.list.scroll_to_reveal_item(self.selected);
         cx.notify();
+    }
+
+    fn toggle_unnamed(&mut self, cx: &mut Context<Self>) {
+        self.show_unnamed = !self.show_unnamed;
+        self.selected = 0;
+        self.rebuild_rows(cx);
     }
 
     fn move_selection(&mut self, delta: isize, cx: &mut Context<Self>) {
@@ -272,10 +282,12 @@ impl SearchModal {
             )
     }
 
-    fn render_hints(&self) -> impl IntoElement {
+    fn render_footer(&self, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .flex()
             .flex_row()
+            .items_center()
+            .justify_between()
             .gap(px(0.85 * theme::REM))
             .px(px(0.85 * theme::REM))
             .py(px(0.4 * theme::REM))
@@ -283,10 +295,30 @@ impl SearchModal {
             .border_color(rgb(0x2b2e36))
             .text_size(px(0.68 * theme::REM))
             .text_color(rgb(0x6b7280))
-            .child(hint("↑↓", " navigate"))
-            .child(hint("↵", " open"))
-            .child(hint(format!("{MOD_KEY}⌫"), " delete"))
-            .child(hint("esc", " close"))
+            .child(
+                div()
+                    .flex()
+                    .flex_row()
+                    .gap(px(0.85 * theme::REM))
+                    .child(hint("↑↓", " navigate"))
+                    .child(hint("↵", " open"))
+                    .child(hint(format!("{MOD_KEY}⌫"), " delete"))
+                    .child(hint("esc", " close")),
+            )
+            .child(
+                checkbox("search-show-unnamed", "Show Unnamed", self.show_unnamed)
+                    .flex_none()
+                    .text_size(px(0.68 * theme::REM))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|_, _: &MouseDownEvent, _, cx| {
+                            cx.stop_propagation();
+                        }),
+                    )
+                    .on_click(cx.listener(|modal, _, _, cx| {
+                        modal.toggle_unnamed(cx);
+                    })),
+            )
     }
 
     fn render_empty(&self) -> impl IntoElement {
@@ -298,6 +330,8 @@ impl SearchModal {
             .text_color(rgb(0x6b7280))
             .child(if self.haystack.is_empty() {
                 SharedString::new_static("No saved calculations yet.")
+            } else if self.needle.is_empty() {
+                SharedString::new_static("Only unnamed calculations older than a day are saved.")
             } else {
                 SharedString::from(format!("No calculations match “{}”.", self.needle))
             })
@@ -378,7 +412,7 @@ impl Render for SearchModal {
                                 .into_any_element(),
                         }),
                 )
-                .child(self.render_hints()),
+                .child(self.render_footer(cx)),
             )
     }
 }
