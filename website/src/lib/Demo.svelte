@@ -30,7 +30,7 @@
 		'',
 		'# Natural Language',
 		'5% of what is 20',
-		'$22 as a % on $20',
+		'$22 as a % on $20'
 	].join('\n');
 
 	/** Milliseconds per character, and the pause held at the end of each line. */

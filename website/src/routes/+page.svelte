@@ -1,16 +1,51 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import Demo from '$lib/Demo.svelte';
 
 	const REPO = 'https://github.com/ImpossibleReality/Siffra';
 	const RELEASES = `${REPO}/releases/latest`;
+	const LATEST_API = 'https://api.github.com/repos/ImpossibleReality/Siffra/releases/latest';
 
-	const platform = $derived.by(() => {
+	type Platform = 'macOS' | 'Windows' | 'Linux';
+
+	// The release workflow gives one asset per platform a version-independent name, so
+	// `releases/latest/download/<name>` keeps resolving to the current release without a
+	// site rebuild. macOS is the exception: its stable name is the updater tarball, while
+	// the .dmg people actually want carries the version, so it is looked up below.
+	const ASSETS: Record<Platform, string> = {
+		macOS: `${RELEASES}/download/Siffra-macos-aarch64.app.tar.gz`,
+		Windows: `${RELEASES}/download/Siffra-windows-x86_64-setup.exe`,
+		Linux: `${RELEASES}/download/Siffra-linux-x86_64.AppImage`
+	};
+
+	let dmg: string | null = $state(null);
+
+	const platform = $derived.by<Platform | null>(() => {
 		if (typeof navigator === 'undefined') return null;
 		const agent = navigator.userAgent;
 		if (/Mac/.test(agent)) return 'macOS';
 		if (/Win/.test(agent)) return 'Windows';
 		if (/Linux|X11/.test(agent)) return 'Linux';
 		return null;
+	});
+
+	// Unrecognised platforms get the release page, which lists every artifact.
+	const download = $derived(platform ? (dmg ?? ASSETS[platform]) : RELEASES);
+
+	onMount(async () => {
+		if (platform !== 'macOS') return;
+		try {
+			const response = await fetch(LATEST_API, {
+				headers: { Accept: 'application/vnd.github+json' }
+			});
+			if (!response.ok) return;
+			const release: { assets?: { name: string; browser_download_url: string }[] } =
+				await response.json();
+			const asset = release.assets?.find((candidate) => candidate.name.endsWith('.dmg'));
+			if (asset) dmg = asset.browser_download_url;
+		} catch {
+			// Rate limited or offline: the tarball link in ASSETS still downloads the app.
+		}
 	});
 </script>
 
@@ -41,7 +76,7 @@
 
 		<section class="download">
 			<div class="actions">
-				<a class="primary" href={RELEASES}>
+				<a class="primary" href={download}>
 					Download{platform ? ` for ${platform}` : ''}
 				</a>
 				<a class="secondary" href={REPO}>View source</a>
