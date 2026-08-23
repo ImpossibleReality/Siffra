@@ -162,7 +162,7 @@ jobs:
         if: ${{ hashFiles(format('.github/release-notes/{0}.md', github.ref_name)) == '' }}
         uses: orhun/git-cliff-action@v4
         with:
-          args: --unreleased --tag ${{ github.ref_name }} --output release-assets/release-notes.md
+          args: --tag ${{ github.ref_name }} --output release-assets/release-notes.md
 
       - name: Build the signed updater manifest
         shell: bash
