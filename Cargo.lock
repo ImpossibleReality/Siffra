@@ -1053,7 +1053,7 @@ dependencies = [
 
 [[package]]
 name = "conformance"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "siffra",
 ]
@@ -5278,7 +5278,7 @@ checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 
 [[package]]
 name = "siffra"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "astro-float",
  "chumsky",
@@ -5293,7 +5293,7 @@ dependencies = [
 
 [[package]]
 name = "siffra-desktop"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "cargo-packager-updater",
  "dirs 6.0.0",
@@ -5314,7 +5314,7 @@ dependencies = [
 
 [[package]]
 name = "siffra-wasm"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "serde",
  "serde-wasm-bindgen",
