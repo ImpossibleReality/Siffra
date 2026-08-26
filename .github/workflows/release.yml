@@ -6,16 +6,31 @@ on:
 
 # Release assets are published only after all supported platforms produce a
 # minisign-signed updater package. The signature is embedded in latest.json and
-# is separate from macOS code signing. It is safe to rerun a failed release:
-# uploads replace an existing asset with the same name.
+# is separate from macOS code signing. Failed releases are safe to rerun: an
+# existing draft is reused and assets with the same name are replaced.
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  verify-version:
+  verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxkbcommon-dev libxkbcommon-x11-dev libxcb-shape0-dev libxcb-xfixes0-dev libgtk-3-dev libwebkit2gtk-4.1-dev libssl-dev
+
       - name: Ensure the tag matches the Cargo workspace version
         shell: bash
         run: |
@@ -23,19 +38,25 @@ jobs:
           version="$(cargo metadata --no-deps --format-version=1 | jq -r '.packages[] | select(.name == "siffra-desktop") | .version')"
           test "v$version" = "$GITHUB_REF_NAME"
 
+      - name: Check formatting
+        run: cargo fmt --check
+
+      - name: Run tests
+        run: cargo test --workspace
+
   package:
-    needs: verify-version
+    needs: verify
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: macos-15
-            formats: app,dmg
+            formats: app
             platform: macos-aarch64
             updater_format: app
             updater_glob: '*.app.tar.gz'
             updater_asset: Siffra-macos-aarch64.app.tar.gz
-            installer_glob: '*.dmg'
+            installer_glob: '*.app.zip'
           - os: windows-2025
             formats: nsis,wix
             platform: windows-x86_64
@@ -53,6 +74,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Install Linux packaging dependencies
@@ -63,14 +86,6 @@ jobs:
 
       - name: Install cargo-packager
         run: cargo install cargo-packager --version 0.11.8 --locked
-
-      - name: Configure macOS ad-hoc signing
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          # `-` is codesign's ad-hoc identity. It seals the complete app bundle
-          # without claiming a Developer ID or making it trusted by Gatekeeper.
-          printf '\n[package.metadata.packager.macos]\nsigning-identity = "-"\n' >> desktop/Cargo.toml
 
       - name: Package and sign
         env:
@@ -87,25 +102,34 @@ jobs:
           test -n "$CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD"
           cargo packager --release --packages siffra-desktop --formats "${{ matrix.formats }}"
 
-      - name: Verify macOS ad-hoc signatures
+      - name: Verify and archive the macOS app
         if: runner.os == 'macOS'
         shell: bash
         run: |
           set -euo pipefail
           app="$(find target/release/bundle -type d -name '*.app' -print -quit)"
-          dmg="$(find target/release/bundle -type f -name '*.dmg' -print -quit)"
           test -n "$app"
-          test -n "$dmg"
 
           # Structural verification catches an unsigned bundle and the invalid
           # linker-only signature that previously produced the "damaged" alert.
           codesign --verify --deep --strict --verbose=2 "$app"
-          codesign --verify --strict --verbose=2 "$dmg"
-
           app_signature="$(codesign --display --verbose=4 "$app" 2>&1)"
-          dmg_signature="$(codesign --display --verbose=4 "$dmg" 2>&1)"
           grep -q '^Signature=adhoc$' <<<"$app_signature"
-          grep -q '^Signature=adhoc$' <<<"$dmg_signature"
+
+          version="$(cargo metadata --no-deps --format-version=1 | jq -r '.packages[] | select(.name == "siffra-desktop") | .version')"
+          archive="target/release/bundle/Siffra_${version}_aarch64.app.zip"
+          ditto -c -k --keepParent --sequesterRsrc "$app" "$archive"
+          unzip -tqq "$archive"
+
+          # Check the distributable rather than only its source bundle. `ditto`
+          # preserves the macOS metadata needed by the app after extraction.
+          extracted="$(mktemp -d)"
+          ditto -x -k "$archive" "$extracted"
+          archived_app="$(find "$extracted" -type d -name '*.app' -print -quit)"
+          test -n "$archived_app"
+          codesign --verify --deep --strict --verbose=2 "$archived_app"
+          archived_signature="$(codesign --display --verbose=4 "$archived_app" 2>&1)"
+          grep -q '^Signature=adhoc$' <<<"$archived_signature"
 
       - name: Stage installers and the updater package
         shell: bash
@@ -128,8 +152,8 @@ jobs:
             '{platform: $platform, asset: $asset, format: $format, signature: $signature}' \
             > release/updater.json
 
-          # Keep the artifact contract narrow: one updater package, one native
-          # installer, and internal manifest data containing the signature.
+          # Keep the artifact contract narrow: one updater package, one
+          # user-facing distribution, and internal manifest signature data.
           test "$(find release -maxdepth 1 -type f | wc -l | tr -d ' ')" -eq 3
 
       - uses: actions/upload-artifact@v4
@@ -141,16 +165,19 @@ jobs:
   publish:
     needs: package
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
           path: release-assets
 
       # Add .github/release-notes/vX.Y.Z.md to override the generated body for
-      # that exact tag. The full CHANGELOG.md asset remains generated below.
+      # that exact tag.
       - name: Stage custom release notes
         if: ${{ hashFiles(format('.github/release-notes/{0}.md', github.ref_name)) != '' }}
         shell: bash
@@ -162,7 +189,7 @@ jobs:
         if: ${{ hashFiles(format('.github/release-notes/{0}.md', github.ref_name)) == '' }}
         uses: orhun/git-cliff-action@v4
         with:
-          args: --tag ${{ github.ref_name }} --output release-assets/release-notes.md
+          args: --current --output release-assets/release-notes.md
 
       - name: Build the signed updater manifest
         shell: bash
@@ -176,8 +203,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          gh release create "$GITHUB_REF_NAME" --title "Siffra $GITHUB_REF_NAME" --notes-file release-assets/release-notes.md --draft
-
           assets=()
           while IFS= read -r -d '' asset; do
             assets+=("$asset")
@@ -185,7 +210,7 @@ jobs:
             -name '*.AppImage' -o \
             -name '*.app.tar.gz' -o \
             -name '*-setup.exe' -o \
-            -name '*.dmg' -o \
+            -name '*.app.zip' -o \
             -name '*.msi' -o \
             -name '*.deb' -o \
             -name latest.json \
@@ -194,6 +219,21 @@ jobs:
           # Three platforms contribute two public artifacts each, followed by
           # the updater manifest. Refuse to publish anything else.
           test "${#assets[@]}" -eq 7
+
+          release_args=(
+            --title "Siffra $GITHUB_REF_NAME"
+            --notes-file release-assets/release-notes.md
+          )
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+            release_args+=(--prerelease)
+          fi
+
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release edit "$GITHUB_REF_NAME" "${release_args[@]}"
+          else
+            gh release create "$GITHUB_REF_NAME" "${release_args[@]}" --verify-tag --draft
+          fi
+
           for asset in "${assets[@]}"; do
             gh release upload "$GITHUB_REF_NAME" "$asset" --clobber
           done

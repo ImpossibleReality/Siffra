@@ -50,3 +50,7 @@ raw-window-handle = "0.6"
 
 [dev-dependencies]
 tempfile = "3"
+
+[package.metadata.packager.macos]
+# `-` seals the app bundle without requiring an Apple Developer identity.
+signing-identity = "-"

@@ -16,6 +16,10 @@ with GPUI and Rust.
 There are provided prebuilt binaries for all platforms in the
 [Releases tab](https://github.com/ImpossibleReality/Siffra/releases).
 
+The macOS app is ad-hoc signed because I do not currently have an Apple Developer Program
+membership. After attempting to open the app and closing the warning, explicitly allow it under
+**System Settings → Privacy & Security → Open Anyway**.
+
 ### Building from source
 
 To build Siffra from source, you will need to have [Rust](https://www.rust-lang.org/tools/install)

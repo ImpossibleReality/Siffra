@@ -11,14 +11,14 @@
 	// The release workflow gives one asset per platform a version-independent name, so
 	// `releases/latest/download/<name>` keeps resolving to the current release without a
 	// site rebuild. macOS is the exception: its stable name is the updater tarball, while
-	// the .dmg people actually want carries the version, so it is looked up below.
+	// the user-facing app ZIP carries the version, so it is looked up below.
 	const ASSETS: Record<Platform, string> = {
 		macOS: `${RELEASES}/download/Siffra-macos-aarch64.app.tar.gz`,
 		Windows: `${RELEASES}/download/Siffra-windows-x86_64-setup.exe`,
 		Linux: `${RELEASES}/download/Siffra-linux-x86_64.AppImage`
 	};
 
-	let dmg: string | null = $state(null);
+	let macArchive: string | null = $state(null);
 
 	const platform = $derived.by<Platform | null>(() => {
 		if (typeof navigator === 'undefined') return null;
@@ -30,7 +30,7 @@
 	});
 
 	// Unrecognised platforms get the release page, which lists every artifact.
-	const download = $derived(platform ? (dmg ?? ASSETS[platform]) : RELEASES);
+	const download = $derived(platform ? (macArchive ?? ASSETS[platform]) : RELEASES);
 
 	onMount(async () => {
 		if (platform !== 'macOS') return;
@@ -41,8 +41,8 @@
 			if (!response.ok) return;
 			const release: { assets?: { name: string; browser_download_url: string }[] } =
 				await response.json();
-			const asset = release.assets?.find((candidate) => candidate.name.endsWith('.dmg'));
-			if (asset) dmg = asset.browser_download_url;
+			const asset = release.assets?.find((candidate) => candidate.name.endsWith('.app.zip'));
+			if (asset) macArchive = asset.browser_download_url;
 		} catch {
 			// Rate limited or offline: the tarball link in ASSETS still downloads the app.
 		}
